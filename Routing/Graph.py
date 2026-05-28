@@ -4,6 +4,7 @@ from langgraph.graph.message import add_messages
 from langchain_core.messages import AIMessage, BaseMessage
 
 from Routing.StandardRouter import coordinator_router_chain
+from Shared.shared import debug_print
 from PromptChaining.Tasks.DomandaGenerica import parallel_question_chain
 from PromptChaining.Critiques.CritiqueChain import critique_question_chain
 
@@ -21,7 +22,7 @@ class AgentState(TypedDict):
 
 def routing_logic(state: AgentState) -> Literal["reclamo", "domanda", "incomprensibile"]:
     decision = coordinator_router_chain.invoke({"original_text": state["original_text"]}).strip().lower()
-    print(f"🔮 [GRAFO - ROUTER] Categoria rilevata: [{decision}]")
+    debug_print(f"🔮 [GRAFO - ROUTER] Categoria rilevata: [{decision}]")
     if decision in ["reclamo", "domanda"]:
         return decision
     return "incomprensibile"
@@ -36,7 +37,7 @@ def router_node(state: AgentState):
     return {"original_text": state["original_text"], "threshold": state.get("threshold", 0)}
 
 def domanda_node(state: AgentState):
-    print(f"🤖 [GRAFO] Nodo DOMANDA - Esecuzione (Tentativo {state.get('threshold', 0) + 1})")
+    debug_print(f"🤖 [GRAFO] Nodo DOMANDA - Esecuzione (Tentativo {state.get('threshold', 0) + 1})")
     testo = state["original_text"]
     if state.get("critique_punti"):
         testo += f"\n\n⚠️ Correggi la risposta precedente seguendo queste indicazioni del supervisore: {', '.join(state['critique_punti'])}"
@@ -47,25 +48,39 @@ def domanda_node(state: AgentState):
 def incomprensibile_node(state: AgentState):
     return {"messages": [AIMessage(content="Mi dispiace, non ho capito la richiesta. Puoi riformulare?")]}
 
-# 4. Nodi Critici (Reflection)
 def critique_question_node(state: AgentState):
-
-    print("🔎 [GRAFO] Nodo CRITICA DOMANDA")
+    debug_print("🔎 [GRAFO] Nodo CRITICA DOMANDA")
+    
     last_response = state["messages"][-1].content
 
     if last_response.strip() == "tools_needed":
-        print("   [LOG CRITICA] Rilevato 'tools_needed'. Approvazione automatica via Python (No LLM).")
+        debug_print("   [LOG CRITICA] Rilevato 'tools_needed'. Approvazione automatica via Python (No LLM).")
         return {
             "critique_approvata": True, 
             "critique_punti": []
         }
 
-    critique_res = critique_question_chain.invoke({"risposta": last_response, "original_text" : state["original_text"]})
-    print(f"   [LOG CRITICA] Approvato: {critique_res.approvato} | Note: {critique_res.punti_da_correggere}")
-    return {"critique_approvata": critique_res.approvato, "critique_punti": critique_res.punti_da_correggere}
+    critique_res = critique_question_chain.invoke({
+        "risposta": last_response, 
+        "original_text": state["original_text"]
+    })
+    
+    approvato = critique_res.approvato
+    punti = critique_res.punti_da_correggere
+
+    if not approvato and (not punti or len(punti) == 0):
+        debug_print("   ⚠️ [GUARDRAIL] Il critico ha restituito 0 punti da correggere ma approvato=False. Forzo l'approvazione a True.")
+        approvato = True
+
+    debug_print(f"   [LOG CRITICA] Risultato Finale -> Approvato: {approvato} | Note: {punti}")
+    
+    return {
+        "critique_approvata": approvato, 
+        "critique_punti": punti
+    }
 
 def clean_state_node(state: AgentState): 
-    print("🧹 [GRAFO] Pulizia dello Stato completata con successo per il prossimo turno.")
+    debug_print("🧹 [GRAFO] Pulizia dello Stato completata con successo per il prossimo turno.")
     return {
         "threshold" : 0,
         "critique_approvata": False,

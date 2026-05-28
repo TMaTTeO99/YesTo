@@ -17,10 +17,7 @@ class RePlanningSchema(BaseModel):
         default=None,
         description = "Se 'finito' è False, inserisci qui la lista AGGIORNATA dei sotto-task rimanenti. Puoi mantenere i vecchi o cambiarli in base ai risultati ottenuti."
     )
-    final_answer: Optional[str] = Field(
-        default=None,
-        description = "Se 'finito' è True, scrivi qui il resoconto finale strutturato ed esaustivo da mostrare all'utente."
-    )
+    
 
 # Forziamo il modello a rispondere usando rigorosamente lo schema JSON
 structured_planner_llm = llm.with_structured_output(PlanSchema)
@@ -60,7 +57,6 @@ replanner_prompt = ChatPromptTemplate.from_messages([
         "3. Se un task è fallito o ha generato un errore, NON arrenderti. Modifica il 'new_plan' "
         "   inserendo un task correttivo o una strategia alternativa per aggirare l'errore.\n"
         "4. Imposta 'stop' a True SOLO quando l'operazione finale è stata confermata dal database. "
-        "   In tal caso, genera una 'final_answer' che spieghi nel dettaglio cosa è stato fatto.\n\n"
         "Genera l'output strutturato richiesto rispettando maniacalmente queste regole."
     )),
     ("user", (

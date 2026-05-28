@@ -10,7 +10,8 @@ from Routing.Graph import (
     clean_state_node
 )
 
-from PlanningAgent.PlanningGraph import (
+from PlanningAgent.SubGraph import (
+    merge_tools_output_node,
     planning_init_node, 
     execution_node, 
     planning_routing_logic,
@@ -29,6 +30,7 @@ workflow.add_node("clean_and_exit", clean_state_node)
 workflow.add_node("planning_init", planning_init_node)
 workflow.add_node("planning_execution", execution_node)
 workflow.add_node("replanner", replanner_node)
+workflow.add_node("merge_tools_output", merge_tools_output_node)
 
 workflow.add_edge(START, "router")
 
@@ -71,8 +73,10 @@ workflow.add_conditional_edges(
     planning_routing_logic,
     {
         "continue_execution": "planning_execution",
-        "go_to_final_response": END
+        "go_to_final_response": "merge_tools_output"
     }
 )
+
+workflow.add_edge("merge_tools_output", END)
 
 uncompiled_workflow = workflow
