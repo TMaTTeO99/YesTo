@@ -25,6 +25,7 @@ if __name__ == "__main__":
             }
         
             output_grafo_1 = app_graph.invoke(stato_iniziale_1, config=config)
-            print(f"Risposta:\n{output_grafo_1['messages'][-1].content}\n")
+            final_response = output_grafo_1.get("response") or output_grafo_1["messages"][-1].content
+            print(f"Risposta:\n{final_response}\n")
         
         

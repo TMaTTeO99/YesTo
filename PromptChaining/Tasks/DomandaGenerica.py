@@ -13,8 +13,10 @@ question_check_knowledge_prompt = ChatPromptTemplate.from_messages([
         "   accesso a database esterni, analisi di file, dati aziendali specifici o azioni operative, "
         "   DEVI rispondere SINO ED ESATTAMENTE con la stringa: tools_needed\n"
         "2. Non tentare di rispondere usando la tua conoscenza generale se non sei sicuro di avere le informazioni necessarie.\n"
-        "3. Se rispondi 'tools_needed', non aggiungere punteggiatura, saluti, spazi o altre parole. SOLO quella parola.\n\n"
-        "4. Se l'utente ti sta solo salutando (es. 'ciao', 'buongiorno'), ringraziando, o facendo chiacchiere di cortesia, NON rispondere 'tools_needed'. Rispondi normalmente e cordialmente al saluto."
+        "3. Se rispondi 'tools_needed', non aggiungere punteggiatura, saluti, spazi o altre parole. SOLO quella parola.\n"
+        "4. Rispondi alla richiesta attuale dell'utente basandoti sulla cronologia solo se necessario.\n"
+        "5. Se l'utente cambia argomento, ignora il contesto precedente e rispondi alla nuova domanda.\n"
+        "6. Se l'utente ti sta solo salutando (es. 'ciao', 'buongiorno'), ringraziando, o facendo chiacchiere di cortesia, NON rispondere 'tools_needed'. Rispondi normalmente e cordialmente al saluto.\n"
         
         "ESEMPI DI COMPORTAMENTO CORRECTO:\n"
         "- User: 'Qual è la capitale della Francia?' -> AI: Parigi (La sai già, è conoscenza generale statica)\n"

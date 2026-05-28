@@ -1,9 +1,9 @@
 from langchain_core.prompts import ChatPromptTemplate
 from Shared.shared import llm
-from Tools.Tools import Find_table_info, elenco_tabelle_db, Create_table
+from Tools.Tools import Find_table_info, elenco_tabelle_db, Create_table, Cerca_su_Web
 
 
-tools_list = [elenco_tabelle_db, Create_table, Find_table_info]
+tools_list = [elenco_tabelle_db, Create_table, Find_table_info, Cerca_su_Web]
 llm_with_tools = llm.bind_tools(tools_list)
 
 executor_prompt = ChatPromptTemplate.from_messages([

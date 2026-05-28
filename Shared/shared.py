@@ -1,6 +1,7 @@
 import os
 import threading
 from dotenv import load_dotenv
+from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_ollama import ChatOllama
 from sqlalchemy import create_engine
 
@@ -12,6 +13,8 @@ def debug_print(*args, **kwargs):
     if DEBUG:
         print(*args, **kwargs)
 
+def getDBAddress() -> str:
+    return _resources.db_address
 
 class AgentResourcesSingleton:
     _instance = None
@@ -31,7 +34,8 @@ class AgentResourcesSingleton:
         
         debug_print("🧠 [SINGLETON] Inizializzazione della risorsa LLM...")
         self._llm = ChatOllama(model="llama3.1", temperature=0)
-        
+        self._web_search = None
+
         # Configurazione parametri DB
         db_user = os.getenv("DB_USER", "postgres")
         db_passwd = os.getenv("DB_PASSWD", "")
@@ -63,12 +67,23 @@ class AgentResourcesSingleton:
             debug_print("🔌 [SINGLETON] Creazione del pool di connessioni (SQLAlchemy Engine)...")
             self._engine = create_engine(self._db_address)
         return self._engine
-
+    
+    @property
+    def web_search(self):
+        """Punto di accesso globale al motore di ricerca, istanziato in modo Lazy."""
+        if self._web_search is None:
+            debug_print("🌐 [SINGLETON] Istanziazione del client DuckDuckGo Search...")
+            self._web_search = DuckDuckGoSearchRun()
+        return self._web_search
 
 _resources = AgentResourcesSingleton()
 
-llm = _resources.llm
-def getDBAddress() -> str:
-    return _resources.db_address
 
-engine = _resources.engine
+def __getattr__(name: str):
+    if name == "engine":
+        return _resources.engine
+    if name == "web_search":
+        return _resources.web_search
+    raise AttributeError(f"module '{__name__}' has no attribute '{name}'")
+
+llm = _resources.llm

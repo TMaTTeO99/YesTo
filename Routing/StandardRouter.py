@@ -1,68 +1,43 @@
+from enum import Enum
+from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from Shared.shared import llm
 
+class RouterClassification(str, Enum):
+    DOMANDA = "domanda"
+    RECLAMO = "reclamo"
+    SALUTO = "saluto"
+    INCOMPRENSIBILE = "incomprensibile"
+
+class RouterSchema(BaseModel):
+    classification: RouterClassification = Field(
+        description="La classificazione della richiesta dell'utente. Scegli 'domanda' per quesiti, ordini o comandi operativi."
+    )
+    justification: str = Field(
+        description="Una brevissima spiegazione (una frase) del perché hai scelto questa classificazione. Aiuta il modello a ragionare."
+    )
+
+structured_router_llm = llm.with_structured_output(RouterSchema)
+
 coordinator_router_prompt = ChatPromptTemplate.from_messages([
-    ("system", "Sei un espeto di analisi del testo e devi analizzare l'input dell'utente."
-                "Analizza il testo dell utente e verifica se è una domanda. Se è una domanda rispondi ESATTAMENTE con: 'domanda'"
-                "Non aggiungere punteggiatura o altre parole."
-                "Cerca di dare una sola opzione alla volta, non dare mai due opzioni ma SOLTANTO UNA"
-                "Non inventare nulla, puoi dare come opzioni soltanto quelle che ti ho indicato"),
-    ("user", "{original_text}")
-])
-coordinator_router_chain = coordinator_router_prompt | llm | StrOutputParser()
-
-
-'''
-    Old routing pattern without memory managment
-'''
-
-# memory_checkpointer = MemorySaver()
-
-# threads_database = {}
-
-# def get_thread_history(thread_id: str) -> ChatMessageHistory :
-#     if thread_id not in threads_database:
-#         threads_database[thread_id] = ChatMessageHistory()
-#     return threads_database[thread_id]
-
-
-# def coordinator_agent(original_text: str, thread_id: str):
-    
-#     history_backend = get_thread_history(thread_id=thread_id)
-#     chat_history = history_backend.messages
-
-#     decision = coordinator_router_chain.invoke({"original_text" : original_text}).strip().lower()
-#     print(f"DEBUG: decision -> [{decision}]\n")
-
-#     match decision :
-#         case "reclamo": 
-#             output_text = parallel_emotional_chain.invoke({"original_text" : original_text, "chat_history": chat_history})
-#         case "domanda":
-#             output_text = parallel_question_chain.invoke({"original_text" : original_text, "chat_history": chat_history})
-#         case _:
-#             output_text = "Mi dispiace. Impossibile servire la richiesta."
+    ("system", (
+        "Sei il Router Principale di un sistema aziendale avanzato. Il tuo unico scopo è classificare l'input dell'utente.\n\n"
+        "CATEGORIE AMMESSE:\n"
+        "- 'domanda': Richieste di dati, creazione tabelle, analisi, query, compiti operativi o domande di cultura generale.\n"
+        "- 'saluto': Cortesia, saluti, ringraziamenti.\n"
+        "- 'reclamo': Espressioni di insoddisfazione, rabbia, bug segnalati con frustrazione.\n"
+        "- 'incomprensibile': Testo sconnesso, lettere a caso.\n\n"
         
-#     history_backend.add_user_message(original_text)
-#     history_backend.add_ai_message(output_text)
+        "ESEMPI DI CLASSIFICAZIONE (FEW-SHOT):\n"
+        "1. User: 'Ciao, come stai?' -> classification: 'saluto'\n"
+        "2. User: 'Crea una tabella chiamata fornitori con id e nome' -> classification: 'domanda'\n"
+        "3. User: 'Il sistema fa schifo, ieri ho perso tutti i dati' -> classification: 'reclamo'\n"
+        "4. User: 'Mostrami le tabelle del db' -> classification: 'domanda'\n"
+        "5. User: 'asdffg123' -> classification: 'incomprensibile'\n\n"
+        
+        "Analizza l'input dell'utente, compila la giustificazione e seleziona la classificazione corretta."
+    )),
+    ("user", "Input utente da classificare: {original_text}")
+])
 
-#     return output_text
-
-# branches = {
-#     "report" : RunnablePassthrough.assign(output = lambda x : final_chain.invoke({"original_text" : x["request"]})),
-#     "reclamo" : RunnablePassthrough.assign(output = lambda x : complaint_chain.invoke({"original_text" : x["request"]})),
-#     "canzone" : RunnablePassthrough.assign(output = lambda x : canzone_chain.invoke({"original_text" : x["request"]})),
-#     "generico" : RunnablePassthrough.assign(output = lambda x: parallel_analysis_chain.invoke({"original_text" : x["request"]}))
-# }
-
-# delegation_branch = RunnableBranch(
-#     (lambda x : x["decision"].strip().lower() == "report", branches["report"]),
-#     (lambda x : x["decision"].strip().lower() == "canzone", branches["canzone"]),
-#     (lambda x : x["decision"].strip().lower() == "reclamo", branches["reclamo"]),
-#     branches["generico"]
-# )
-
-# coordinator_agent = {
-#     "decision" : coordinator_router_chain,
-#     "request" : RunnablePassthrough()
-# } | delegation_branch | (lambda x : x["output"])
+coordinator_router_chain = coordinator_router_prompt | structured_router_llm

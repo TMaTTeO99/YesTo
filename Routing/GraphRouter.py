@@ -45,7 +45,6 @@ workflow.add_conditional_edges(
 
 workflow.add_edge("incomprensibile", END)
 
-# Flusso Domanda -> Critica -> Loop Condizionale
 workflow.add_edge("domanda", "critica_domanda")
 workflow.add_conditional_edges(
     "critica_domanda",
