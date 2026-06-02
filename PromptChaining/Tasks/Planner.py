@@ -8,14 +8,15 @@ class PlanSchema(BaseModel):
         description="Lista ordinata di sotto-task sequenziali necessari per rispondere alla domanda dell'utente. Ogni task deve essere atomico e chiaro."
     )
 
-class RePlanningSchema(BaseModel): 
+class RePlanningSchema(BaseModel):
     stop: bool = Field(
-        description="True se l'obiettivo iniziale dell'utente è stato pienamente raggiunto o se non è possibile andare avanti. " \
-                    "False se ci sono ancora task da eseguire o se il piano va aggiornato."
+        description="True se l'errore è insuperabile e non è possibile procedere in nessun modo. "
+                    "False nella quasi totalità dei casi: devi sempre tentare un piano correttivo."
     )
     new_plan: Optional[List[str]] = Field(
         default=None,
-        description = "Se 'finito' è False, inserisci qui la lista AGGIORNATA dei sotto-task rimanenti. Puoi mantenere i vecchi o cambiarli in base ai risultati ottenuti."
+        description="Lista AGGIORNATA dei sotto-task rimanenti per recuperare dall'errore. "
+                    "Deve contenere un task correttivo o alternativo che risolva il problema riscontrato."
     )
     
 
@@ -25,16 +26,20 @@ structured_planner_llm = llm.with_structured_output(PlanSchema)
 planner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "Sei il Capo Progetto di un sistema agentico avanzato.\n"
-        "Il tuo compito è prendere la richiesta macro di un utente e scomporla in un piano di lavoro "
-        "composto da sotto-task sequenziali e cronologici.\n\n"
-        "Linee guida per i sotto-task:\n"
-        "- Raggiona sulla richiesta e accorpa le azioni necessarie per risolvere il problema in sotto-task chiari e specifici.\n"
-        "- Devono essere specifici e focalizzati su una singola azione alla volta se possibile.\n"
-        "- Devono essere ordinati in modo logico (es. non puoi chiedere di riassumere un testo prima di averlo cercato).\n"
-        "- Evita task generici, scrivi azioni chiare.\n\n"
-        "Genera l'output strutturato richiesto."
+        "Il tuo compito è scomporre la richiesta dell'utente nel MINIMO numero di sotto-task "
+        "strettamente necessari per rispondere, senza aggiungere passaggi accessori o di contorno.\n\n"
+        "REGOLE TASSATIVE:\n"
+        "1. MINIMALISMO: pianifica solo le azioni indispensabili. Se una singola ricerca web o "
+        "   una singola query DB è sufficiente, il piano ha UN solo task.\n"
+        "2. Non aggiungere task di verifica, raccolta dettagli aggiuntivi, o controlli "
+        "   se non esplicitamente richiesti dall'utente.\n"
+        "3. Ogni task deve essere atomico e indipendente: se due azioni possono essere "
+        "   fuse in una sola query/ricerca, accorpale.\n"
+        "4. Massimo 3 task salvo casi eccezionali con operazioni multi-step realmente distinte "
+        "   (es. leggi schema DB → crea tabella → verifica creazione).\n"
+        "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
-    ("user", "Ecco la richiesta dell'utente da scomporre in passaggi:\n\n{original_text}")
+    ("user", "Richiesta dell'utente:\n\n{original_text}")
 ])
 
 # 3. La Catena del Planner
@@ -45,24 +50,25 @@ structured_replanner_llm = llm.with_structured_output(RePlanningSchema)
 
 replanner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei il Direttore di Gara di un sistema agentico avanzato (Re-Planner).\n"
-        "Il tuo compito è analizzare la richiesta ORIGINALE dell'utente, guardare il 'Diario di bordo' "
-        "con le azioni già completate e decidere se l'obiettivo finale è stato REALMENTE raggiunto.\n\n"
-        "REGOLE TASSATIVE DI LOGICA:\n"
-        "1. L'obiettivo è raggiunto SOLO se l'azione finale richiesta (es. creare la tabella, inserire dati) "
-        "   è stata eseguita con successo sul database. Se hai solo fatto verifiche preliminari (es. elenco_tabelle_db), "
-        "   l'obiettivo NON è raggiunto. Imposta 'stop' a False.\n"
-        "2. Se l'obiettivo NON è raggiunto, devi guardare i task che erano stati pianificati e "
-        "   restituire in 'new_plan' la lista dei task che mancano ancora per completare l'opera, "
-        "   rimuovendo SOLO il task che è appena stato completato con successo.\n"
-        "3. Se un task è fallito o ha generato un errore, NON arrenderti. Modifica il 'new_plan' "
-        "   inserendo un task correttivo o una strategia alternativa per aggirare l'errore.\n"
-        "4. Imposta 'stop' a True SOLO quando l'operazione finale è stata confermata dal database. "
-        "Genera l'output strutturato richiesto rispettando maniacalmente queste regole."
+        "Sei il Gestore degli Errori di un sistema agentico avanzato (Re-Planner).\n"
+        "Vieni chiamato SOLO quando un task ha generato un errore. Il tuo unico compito è "
+        "produrre il piano correttivo MINIMO per riprendersi dal problema.\n\n"
+        "REGOLE TASSATIVE:\n"
+        "1. MINIMALISMO: inserisci nel 'new_plan' SOLO il task correttivo che risolve l'errore, "
+        "   più gli eventuali task originali che non sono ancora stati eseguiti e sono ancora necessari. "
+        "   Non aggiungere task di verifica o controllo aggiuntivi.\n"
+        "2. Scrivi ogni task come una frase semplice e diretta. NON usare prefissi come 'Task:', "
+        "   'Step:', numeri o qualsiasi altro prefisso. Esempio corretto: 'Clicca su Rifiuta tutto'.\n"
+        "3. Quelli già completati con successo non vanno mai ripetuti.\n"
+        "3. Non arrenderti mai: quasi sempre esiste una strategia alternativa. "
+        "   Imposta 'stop' a False e fornisci un 'new_plan' correttivo.\n"
+        "4. Imposta 'stop' a True ESCLUSIVAMENTE se l'errore è strutturalmente insuperabile "
+        "   (es. permessi mancanti, risorsa inesistente e non creabile) e non esiste alcuna alternativa.\n"
+        "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
     ("user", (
         "🎯 RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
-        "📊 DIARIO DI BORDO (Task già eseguiti e relativi risultati):\n"
+        "📊 DIARIO DI BORDO (Task eseguiti e relativi risultati, incluso l'errore):\n"
         "{past_steps_context}"
     ))
 ])

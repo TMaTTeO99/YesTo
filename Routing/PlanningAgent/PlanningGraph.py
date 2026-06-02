@@ -7,14 +7,16 @@ from PromptChaining.Tasks.Executor import executor_chain
 from PromptChaining.Tasks.SessionSummary import summary_chain
 from Shared.shared import debug_print
 from PromptChaining.Tasks.ToolsOutput import final_tools_output_chain
+from PromptChaining.Tasks.EarlyStopChecker import early_stop_checker_chain
 
-from Tools.Tools import Find_table_info, elenco_tabelle_db, Create_table, Cerca_su_Web
+from Tools.Tools import Find_table_info, elenco_tabelle_db, Create_table, Cerca_su_Web, Interagisci_con_Pagina_Web
 
 tools_map = {
-    "elenco_tabelle_db" : elenco_tabelle_db, 
+    "elenco_tabelle_db" : elenco_tabelle_db,
     "Create_table" : Create_table,
     "Find_table_info": Find_table_info,
-    "Cerca_su_Web": Cerca_su_Web
+    "Cerca_su_Web": Cerca_su_Web,
+    "Interagisci_con_Pagina_Web": Interagisci_con_Pagina_Web
 }
 
 MAX_PAST_STEP_BUFFER = 4
@@ -27,7 +29,7 @@ def _compact_past_steps(past_steps: list[dict]) -> list[dict]:
     recent_steps = past_steps[-MAX_PAST_STEP_BUFFER:]
     old_steps = past_steps[:-MAX_PAST_STEP_BUFFER]
     compact_text = "\n".join([
-        f"Task: {step['task']}\nRicevuta: {step['receipt']}" for step in old_steps
+        f"Task: {step['task']}\nRisultato: {step['details']}" for step in old_steps
     ])
     summarized_text = summary_chain.invoke({
         "existing_summary": "",
@@ -46,7 +48,7 @@ def _compact_past_steps(past_steps: list[dict]) -> list[dict]:
 def _build_replanner_context(past_steps: list[dict]) -> str:
     compact_steps = _compact_past_steps(past_steps)
     return "\n".join([
-        f"Task: {step['task']}\nRicevuta: {step['receipt']}" for step in compact_steps
+        f"Task: {step['task']}\nRicevuta: {step['details']}" for step in compact_steps
     ])
 
 
@@ -102,7 +104,7 @@ def execution_node(state: AgentState):
     debug_print(f"🎯 [PLANNING] Nodo EXECUTION - Task attuale: '{task_da_fare}'")
     
     past_steps = state.get("past_steps", [])
-    context_str = "".join([f"- Task: {step['task']} -> Ricevuta: {step['receipt']}\n" for step in past_steps])
+    context_str = "".join([f"- Task: {step['task']} -> Risultato: {step['details']}\n" for step in past_steps])
     if not context_str:
         context_str = "Nessun task eseguito in precedenza."
         
@@ -112,19 +114,26 @@ def execution_node(state: AgentState):
     })
 
     if hasattr(risultato_task, 'tool_calls') and risultato_task.tool_calls:
+
         result_function = []
         nuovi_passi = list(past_steps)
         for tool_call in risultato_task.tool_calls:
+
             tool_name = tool_call["name"]
             tool_args = tool_call.get("args", {})
             debug_print(f"   [LOG EXECUTOR] Rilevato chiamata a tool: {tool_name} con argomenti {tool_args}")
             
             if tool_name in tools_map:
+
                 tool_func = tools_map[tool_name]
                 tool_result = tool_func.invoke(tool_args)
                 normalized = _normalize_tool_result(tool_name, tool_result)
+                
                 debug_print(f"   [LOG EXECUTOR] Risultato del tool '{tool_name}': {normalized['receipt']}")
-                result_function.append(f"[{tool_name}]: {normalized['receipt']}")
+                if tool_name == "Cerca_su_Web":
+                    debug_print(f"   [LOG WEB] Contenuto trovato:\n{normalized['details']}")
+                result_function.append(f"[{tool_name}]: {normalized['details']}")
+                
                 nuovi_passi.append({
                     "task": task_da_fare,
                     "tool_name": tool_name,
@@ -171,7 +180,7 @@ def replanner_node(state: AgentState):
         return {}
 
     ultimo_risultato = str(past_steps[-1]["receipt"])
-    debug_print(f"TEST: ************* ultimo_risultato: {ultimo_risultato}")
+    debug_print(f"TEST: ************* ultimo_risultato: {str(past_steps[-1]["details"])}")
 
     if "[ERROR]" not in ultimo_risultato and len(current_plan) == 0:
         debug_print("   🛑 [GUARDRAIL PYTHON] Obiettivo raggiunto con successo e piano esaurito. Forzo l'uscita.")
@@ -179,6 +188,21 @@ def replanner_node(state: AgentState):
 
     if "[ERROR]" not in ultimo_risultato and len(current_plan) > 0:
         debug_print(f"   [LOG RE-PLANNER] Tutto procede bene. Task rimanenti nel buffer: {len(current_plan)}")
+
+        context_str = _build_replanner_context(past_steps)
+        remaining_str = "\n".join([f"- {t}" for t in current_plan])
+        
+        early_stop_res = early_stop_checker_chain.invoke({
+            "original_text": state["original_text"],
+            "past_steps_context": context_str,
+            "remaining_tasks": remaining_str
+        })
+        debug_print(f"   [LOG EARLY-STOP] obiettivo_raggiunto={early_stop_res.obiettivo_raggiunto} | {early_stop_res.motivazione}")
+
+        if early_stop_res.obiettivo_raggiunto:
+            debug_print("   🛑 [EARLY STOP] Obiettivo già raggiunto. Salto i task rimanenti.")
+            return {"plan": []}
+
         return {}
 
     debug_print("   ⚠️ [LOG RE-PLANNER] Rilevato un [ERROR] reale nell'ultimo task. Interpello l'LLM per ri-pianificare...")

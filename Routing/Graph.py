@@ -41,7 +41,6 @@ def build_chat_history(state) -> list[BaseMessage]:
         return all_messages
         
     recent_messages = all_messages[-6:]
-    
     return recent_messages
 
 
@@ -100,7 +99,6 @@ def router_node(state: AgentState):
 
 def domanda_node(state: AgentState):
     debug_print(f"🤖 [GRAFO] Nodo DOMANDA - Esecuzione (Tentativo {state.get('threshold', 0) + 1})")
-    
     testo_attuale = state["original_text"]
     
     if state.get("critique_punti"):
@@ -111,12 +109,35 @@ def domanda_node(state: AgentState):
     debug_print(f"   [LOG MEMORIA] Chat history inviata al modello con {len(chat_history)} messaggi.")
 
     res = parallel_question_chain.invoke({
-        "original_text": testo_attuale, 
+        "original_text": testo_attuale,
         "chat_history": chat_history
     })
-    
+
+    debug_print(f"   [LOG DOMANDA] needs_tools={res.needs_tools}")
+
+    if res.needs_tools:
+        enriched_text = testo_attuale
+        if chat_history:
+            context_lines = "\n".join([
+                f"{'Utente' if m.type == 'human' else 'Assistente'}: {m.content}"
+                for m in chat_history
+                if m.content.strip() and m.content.strip() != "tools_needed"
+            ])
+            if context_lines:
+                enriched_text = (
+                    f"Contesto della conversazione precedente:\n{context_lines}\n\n"
+                    f"Richiesta attuale dell'utente: {testo_attuale}"
+                )
+                debug_print(f"   [LOG DOMANDA] original_text arricchito con chat history.")
+
+        return {
+            "messages": [AIMessage(content="tools_needed")],
+            "original_text": enriched_text,
+            "threshold": state.get("threshold", 0) + 1
+        }
+
     return {
-        "messages": [AIMessage(content=res)], 
+        "messages": [AIMessage(content=res.answer)],
         "threshold": state.get("threshold", 0) + 1
     }
 

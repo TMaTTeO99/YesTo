@@ -1,9 +1,65 @@
 import json
+import re
+import atexit
 from langchain_core.tools import tool
 from Shared.shared import engine, debug_print
 from sqlalchemy import inspect, text
 from Shared.shared import web_search
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
+from playwright.sync_api import sync_playwright, Browser, Page, TimeoutError as PlaywrightTimeoutError
+
+# --- Sessione browser persistente ---
+
+_playwright_instance = None
+_browser: Optional[Browser] = None
+_page: Optional[Page] = None
+
+def _get_page() -> Page:
+    global _playwright_instance, _browser, _page
+    if _browser is None or not _browser.is_connected():
+        debug_print("🌍 [BROWSER] Avvio nuova sessione browser...")
+        _playwright_instance = sync_playwright().start()
+        _browser = _playwright_instance.chromium.launch(headless=False)
+        _page = _browser.new_context(storage_state=None).new_page()
+    return _page
+
+def _close_browser():
+    global _playwright_instance, _browser, _page
+    if _browser and _browser.is_connected():
+        _browser.close()
+    if _playwright_instance:
+        _playwright_instance.stop()
+    _browser = None
+    _page = None
+    _playwright_instance = None
+
+atexit.register(_close_browser)
+
+# --- Protezioni browser ---
+
+_ALLOWED_ACTIONS = {"fetch", "click", "fill"}
+
+_BLOCKED_URL_PATTERNS = [
+    r"localhost", r"127\.0\.0\.1", r"192\.168\.", r"10\.\d+\.\d+\.\d+",
+    r"169\.254\.", r"0\.0\.0\.0",
+    r"/admin", r"/delete", r"/remove", r"/drop",
+    r"payment", r"checkout", r"confirm-order",
+]
+
+def _is_url_safe(url: str) -> bool:
+    url_lower = url.lower()
+    return not any(re.search(p, url_lower) for p in _BLOCKED_URL_PATTERNS)
+
+def _request_human_approval(action: str, url: str, selector: Optional[str], text_input: Optional[str]) -> bool:
+    print(f"\n⚠️  [BROWSER] Azione interattiva richiesta dal modello:")
+    print(f"   Azione   : {action.upper()}")
+    print(f"   URL      : {url}")
+    if selector:
+        print(f"   Selettore: {selector}")
+    if text_input:
+        print(f"   Testo    : {text_input}")
+    confirm = input("   Confermi l'esecuzione? (s/n): ").strip().lower()
+    return confirm == "s"
 
 
 def _make_tool_response(success: bool, receipt: str, summary: str, details: str) -> dict:
@@ -134,10 +190,123 @@ def Cerca_su_Web(query: str) -> dict:
             return _make_tool_response(False, receipt, receipt, receipt)
             
         details = f"Risultati estratti dal Web per '{query}':\n\n{risultati}"
-        summary = f"Ricerca web completata per '{query}'."
-        receipt = "Ricerca web eseguita con successo."
+        summary = f"Ricerca web completata con successo per '{query}'. Contenuto trovato disponibile nei dettagli."
+        receipt = f"Ricerca web eseguita con successo per '{query}'."
         return _make_tool_response(True, receipt, summary, details)
         
     except Exception as e:
         error_message = f"Errore durante la ricerca web: {str(e)}"
         return _make_tool_response(False, error_message, error_message, error_message)
+
+
+@tool
+def Interagisci_con_Pagina_Web(
+    url: str,
+    action: str,
+    selector: Optional[str] = None,
+    text_input: Optional[str] = None
+) -> dict:
+    """Usa questo strumento per interagire con una pagina web tramite browser reale (Playwright).
+    Supporta tre azioni:
+    - 'fetch': carica la pagina e restituisce il testo visibile. Non richiede selector né text_input.
+    - 'click': clicca su un elemento identificato da un CSS selector o testo del bottone.
+    - 'fill': compila un campo di input (selector) con il valore text_input e invia il form.
+
+    PARAMETRI:
+    - url: URL completo della pagina (es. 'https://www.example.com').
+    - action: una tra 'fetch', 'click', 'fill'.
+    - selector: (obbligatorio per click/fill) CSS selector dell'elemento target (es. 'button#submit', 'input[name=q]').
+    - text_input: (obbligatorio per fill) testo da inserire nel campo.
+
+    QUANDO USARE QUESTO TOOL vs Cerca_su_Web:
+    - Usa Cerca_su_Web per ricerche generali su DuckDuckGo.
+    - Usa questo tool quando hai già un URL specifico da visitare, quando la pagina richiede
+      JavaScript per caricare i dati, o quando devi interagire con elementi della pagina."""
+
+    debug_print(f"🌍 [TOOL BROWSER] Azione '{action}' su URL: {url}")
+
+    # --- Protezione 1: azione nella whitelist ---
+    if action not in _ALLOWED_ACTIONS:
+        msg = f"[ERROR]: Azione '{action}' non consentita. Azioni valide: {sorted(_ALLOWED_ACTIONS)}."
+        return _make_tool_response(False, msg, msg, msg)
+
+    # --- Protezione 2: URL sicuro ---
+    if not _is_url_safe(url):
+        msg = f"[ERROR]: URL '{url}' bloccato dalle policy di sicurezza (indirizzo locale o percorso vietato)."
+        return _make_tool_response(False, msg, msg, msg)
+
+    # --- Protezione 3: parametri obbligatori per azioni interattive ---
+    if action == "click" and not selector:
+        msg = "[ERROR]: L'azione 'click' richiede il parametro 'selector'."
+        return _make_tool_response(False, msg, msg, msg)
+    if action == "fill" and (not selector or not text_input):
+        msg = "[ERROR]: L'azione 'fill' richiede sia 'selector' che 'text_input'."
+        return _make_tool_response(False, msg, msg, msg)
+
+    # --- Protezione 4: human-in-the-loop per azioni non read-only ---
+    if action in ("click", "fill"):
+        approved = _request_human_approval(action, url, selector, text_input)
+        if not approved:
+            msg = "[ERROR]: Azione annullata dall'utente."
+            debug_print(f"   [LOG BROWSER] {msg}")
+            return _make_tool_response(False, msg, msg, msg)
+
+    try:
+        page = _get_page()
+        current_url = page.url
+        if not current_url.startswith(url) and not url.startswith(current_url.rstrip("/")):
+            debug_print(f"   [LOG BROWSER] Navigazione verso '{url}' (URL corrente: '{current_url}')")
+            page.goto(url, timeout=15000, wait_until="domcontentloaded")
+        else:
+            debug_print(f"   [LOG BROWSER] Già su '{current_url}', salto la navigazione.")
+
+        if action == "fetch":
+            
+            page.wait_for_timeout(1500)
+            testo = page.inner_text("body")
+            testo = re.sub(r'\n{3,}', '\n\n', testo).strip()
+            testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
+
+            summary = f"Pagina '{url}' caricata correttamente. Estratti {len(testo)} caratteri di testo."
+            details = f"Contenuto della pagina '{url}':\n\n{testo_troncato}"
+            receipt = f"Pagina '{url}' recuperata con successo."
+            input("\n   [BROWSER] Premi Invio per continuare...")
+            return _make_tool_response(True, receipt, summary, details)
+
+        elif action == "click":
+            debug_print(f"[LOG BROWSER] Clicco sul selettore '{selector}'...")
+            page.locator(selector).first.click(timeout=8000)
+            try:
+                page.wait_for_load_state("networkidle", timeout=8000)
+            except PlaywrightTimeoutError:
+                page.wait_for_timeout(2000)
+            testo = page.inner_text("body")
+            testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
+
+
+            summary = f"Click su '{selector}' eseguito. Pagina risultante estratta."
+            details = f"Contenuto della pagina dopo il click:\n\n{testo_troncato}"
+            receipt = f"Click su '{selector}' eseguito con successo."
+            input("\n   [BROWSER] Premi Invio per continuare...")
+            return _make_tool_response(True, receipt, summary, details)
+
+        elif action == "fill":
+            debug_print(f"[LOG BROWSER] Compilazione del campo '{selector}' con il testo '{text_input}'...")
+            page.locator(selector).first.fill(text_input, timeout=8000)
+            page.keyboard.press("Enter")
+            page.wait_for_timeout(2000)
+            testo = page.inner_text("body")
+            testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
+
+            summary = f"Campo '{selector}' compilato con '{text_input}' e form inviato."
+            details = f"Contenuto della pagina dopo l'invio del form:\n\n{testo_troncato}"
+            receipt = f"Form compilato e inviato con successo su '{url}'."
+            input("\n   [BROWSER] Premi Invio per continuare...")
+            return _make_tool_response(True, receipt, summary, details)
+
+    except PlaywrightTimeoutError as e:
+        msg = f"[ERROR]: Timeout durante l'interazione con '{url}': {str(e)}"
+        return _make_tool_response(False, msg, msg, msg)
+    except Exception as e:
+        msg = f"[ERROR]: Errore durante l'interazione con il browser: {str(e)}"
+        return _make_tool_response(False, msg, msg, msg)
