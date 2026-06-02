@@ -1,12 +1,14 @@
-from typing import List, Union, Optional
+from typing import List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
-from Shared.shared import llm
+from config import llm
+
 
 class PlanSchema(BaseModel):
     sotto_task: List[str] = Field(
         description="Lista ordinata di sotto-task sequenziali necessari per rispondere alla domanda dell'utente. Ogni task deve essere atomico e chiaro."
     )
+
 
 class RePlanningSchema(BaseModel):
     stop: bool = Field(
@@ -18,12 +20,9 @@ class RePlanningSchema(BaseModel):
         description="Lista AGGIORNATA dei sotto-task rimanenti per recuperare dall'errore. "
                     "Deve contenere un task correttivo o alternativo che risolva il problema riscontrato."
     )
-    
 
-# Forziamo il modello a rispondere usando rigorosamente lo schema JSON
-structured_planner_llm = llm.with_structured_output(PlanSchema)
 
-planner_prompt = ChatPromptTemplate.from_messages([
+_planner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "Sei il Capo Progetto di un sistema agentico avanzato.\n"
         "Il tuo compito è scomporre la richiesta dell'utente nel MINIMO numero di sotto-task "
@@ -48,13 +47,7 @@ planner_prompt = ChatPromptTemplate.from_messages([
     ("user", "Richiesta dell'utente:\n\n{original_text}")
 ])
 
-# 3. La Catena del Planner
-planner_chain = planner_prompt | structured_planner_llm
-
-
-structured_replanner_llm = llm.with_structured_output(RePlanningSchema)
-
-replanner_prompt = ChatPromptTemplate.from_messages([
+_replanner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "Sei il Gestore degli Errori di un sistema agentico avanzato (Re-Planner).\n"
         "Vieni chiamato SOLO quando un task ha generato un errore. Il tuo unico compito è "
@@ -72,7 +65,7 @@ replanner_prompt = ChatPromptTemplate.from_messages([
         "   NON riproporre lo stesso selector che ha già fallito.\n"
         "5. Non arrenderti mai: quasi sempre esiste una strategia alternativa. "
         "   Imposta 'stop' a False e fornisci un 'new_plan' correttivo.\n"
-        "4. Imposta 'stop' a True ESCLUSIVAMENTE se l'errore è strutturalmente insuperabile "
+        "6. Imposta 'stop' a True ESCLUSIVAMENTE se l'errore è strutturalmente insuperabile "
         "   (es. permessi mancanti, risorsa inesistente e non creabile) e non esiste alcuna alternativa.\n"
         "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
@@ -83,4 +76,5 @@ replanner_prompt = ChatPromptTemplate.from_messages([
     ))
 ])
 
-replanner_chain = replanner_prompt | structured_replanner_llm
+planner_chain = _planner_prompt | llm.with_structured_output(PlanSchema)
+replanner_chain = _replanner_prompt | llm.with_structured_output(RePlanningSchema)

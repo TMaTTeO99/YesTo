@@ -1,7 +1,8 @@
 from typing import List
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
-from Shared.shared import llm
+from config import llm
+
 
 class CritiqueSchema(BaseModel):
     approvato: bool = Field(
@@ -12,13 +13,11 @@ class CritiqueSchema(BaseModel):
                     "Se approvato è FALSE, inserisci qui l'elenco dei punti deboli riscontrati."
     )
 
-structured_critic_llm = llm.with_structured_output(CritiqueSchema)
 
-critique_question_prompt = ChatPromptTemplate.from_messages([
+_prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "Sei l'Ispettore Controllo Qualità del sistema (Critico).\n"
         "Il tuo unico compito è validare se la risposta dell'agente è corretta e non inventata.\n\n"
-
         "REGOLE DI VALUTAZIONE:\n"
         "1. Messaggi di cortesia, saluti o chiacchiere -> approvato=True sempre.\n"
         "2. Risposte di conoscenza generale statica (capitali, definizioni, storia...) -> "
@@ -32,4 +31,5 @@ critique_question_prompt = ChatPromptTemplate.from_messages([
     )),
     ("user", "Richiesta utente: {original_text}\n\nRisposta agente: {risposta}")
 ])
-critique_question_chain = critique_question_prompt | structured_critic_llm
+
+critique_chain = _prompt | llm.with_structured_output(CritiqueSchema)

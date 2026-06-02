@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
-from Shared.shared import llm
+from config import llm
 
 
 class EarlyStopSchema(BaseModel):
@@ -14,9 +14,7 @@ class EarlyStopSchema(BaseModel):
     )
 
 
-structured_early_stop_llm = llm.with_structured_output(EarlyStopSchema)
-
-early_stop_checker_prompt = ChatPromptTemplate.from_messages([
+_prompt = ChatPromptTemplate.from_messages([
     ("system", (
         "Sei l'Ottimizzatore di un sistema agentico avanzato.\n"
         "Vieni chiamato dopo ogni task eseguito con successo per decidere se la RICHIESTA ORIGINALE "
@@ -48,4 +46,4 @@ early_stop_checker_prompt = ChatPromptTemplate.from_messages([
     ))
 ])
 
-early_stop_checker_chain = early_stop_checker_prompt | structured_early_stop_llm
+early_stop_chain = _prompt | llm.with_structured_output(EarlyStopSchema)
