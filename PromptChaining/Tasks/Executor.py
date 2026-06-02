@@ -18,7 +18,12 @@ executor_prompt = ChatPromptTemplate.from_messages([
         "  selector='text=Rifiuta tutto' oppure selector='text=Accetta tutto'.\n"
         "- Preferisci SEMPRE selettori testuali (text=...) rispetto a selettori CSS inventati.\n"
         "- Se la pagina mostra un popup o dialog bloccante (es. cookie consent), devi gestirlo "
-        "  PRIMA di procedere con il task principale.\n\n"
+        "  PRIMA di procedere con il task principale.\n"
+        "- Per digitare testo in un campo di ricerca o form, devi SEMPRE seguire questo flusso:\n"
+        "  1. Usa action='get_inputs' per ottenere la lista degli elementi interattivi e i loro CSS selector.\n"
+        "  2. Usa action='fill' con il selector ESATTO trovato nel risultato di get_inputs.\n"
+        "  NON indovinare il selector: usa SOLO selettori restituiti da get_inputs o visibili nel testo della pagina.\n"
+        "  NON usare action='fetch' per eseguire una ricerca: fetch legge solo la pagina, non digita nulla.\n\n"
         "Rispondi descrivendo l'azione fatta o mostrando i dati reali ottenuti dagli strumenti."
     )),
     ("user", (

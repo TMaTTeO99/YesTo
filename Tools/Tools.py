@@ -35,9 +35,54 @@ def _close_browser():
 
 atexit.register(_close_browser)
 
+# --- Gestione popup / cookie banner ---
+
+_COOKIE_SELECTORS = [
+    # testo pulsante
+    "button:has-text('Accetta')", "button:has-text('Accetta tutto')",
+    "button:has-text('Accept')", "button:has-text('Accept all')",
+    "button:has-text('Agree')", "button:has-text('I agree')",
+    "button:has-text('OK')", "button:has-text('Got it')",
+    "button:has-text('Consent')", "button:has-text('Allow all')",
+    "button:has-text('Allow cookies')", "button:has-text('Continua')",
+    # ID / class comuni
+    "#accept-cookies", "#acceptCookies", "#cookie-accept",
+    ".accept-cookies", ".cookie-accept", ".cookie-consent-accept",
+    "[data-testid='cookie-accept']", "[aria-label='Accept cookies']",
+    # OneTrust / Cookiebot / Quantcast
+    "#onetrust-accept-btn-handler",
+    "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll",
+    ".qc-cmp2-summary-buttons button:first-child",
+]
+
+def _dismiss_popups(page) -> None:
+    for selector in _COOKIE_SELECTORS:
+        try:
+            btn = page.locator(selector).first
+            if btn.is_visible(timeout=500):
+                btn.click(timeout=1000)
+                debug_print(f"   [BROWSER] Cookie banner chiuso con selettore: {selector}")
+                page.wait_for_timeout(800)
+                return
+        except Exception:
+            continue
+
+def _extract_text(page) -> str:
+    for selector in ("main", "article", "#content", "#main-content", ".content", "body"):
+        try:
+            el = page.locator(selector).first
+            if el.count() and el.is_visible(timeout=300):
+                testo = el.inner_text(timeout=3000)
+                if len(testo.strip()) > 200:
+                    debug_print(f"   [BROWSER] Testo estratto da selettore: {selector}")
+                    return testo
+        except Exception:
+            continue
+    return page.inner_text("body")
+
 # --- Protezioni browser ---
 
-_ALLOWED_ACTIONS = {"fetch", "click", "fill"}
+_ALLOWED_ACTIONS = {"fetch", "click", "fill", "get_inputs"}
 
 _BLOCKED_URL_PATTERNS = [
     r"localhost", r"127\.0\.0\.1", r"192\.168\.", r"10\.\d+\.\d+\.\d+",
@@ -207,14 +252,17 @@ def Interagisci_con_Pagina_Web(
     text_input: Optional[str] = None
 ) -> dict:
     """Usa questo strumento per interagire con una pagina web tramite browser reale (Playwright).
-    Supporta tre azioni:
+    Supporta quattro azioni:
     - 'fetch': carica la pagina e restituisce il testo visibile. Non richiede selector né text_input.
-    - 'click': clicca su un elemento identificato da un CSS selector o testo del bottone.
+    - 'get_inputs': restituisce la lista di tutti gli elementi interattivi visibili nella pagina corrente
+      (input, textarea, select, button) con il loro CSS selector, tipo, placeholder e label.
+      Usalo PRIMA di 'fill' o 'click' per scoprire il selector corretto da usare.
+    - 'click': clicca su un elemento identificato da un CSS selector.
     - 'fill': compila un campo di input (selector) con il valore text_input e invia il form.
 
     PARAMETRI:
     - url: URL completo della pagina (es. 'https://www.example.com').
-    - action: una tra 'fetch', 'click', 'fill'.
+    - action: una tra 'fetch', 'get_inputs', 'click', 'fill'.
     - selector: (obbligatorio per click/fill) CSS selector dell'elemento target (es. 'button#submit', 'input[name=q]').
     - text_input: (obbligatorio per fill) testo da inserire nel campo.
 
@@ -256,14 +304,55 @@ def Interagisci_con_Pagina_Web(
         current_url = page.url
         if not current_url.startswith(url) and not url.startswith(current_url.rstrip("/")):
             debug_print(f"   [LOG BROWSER] Navigazione verso '{url}' (URL corrente: '{current_url}')")
-            page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            try:
+                page.goto(url, timeout=15000, wait_until="domcontentloaded")
+            except PlaywrightTimeoutError:
+                debug_print(f"   [LOG BROWSER] Timeout con 'domcontentloaded', riprovo con 'load'...")
+                page.goto(url, timeout=20000, wait_until="load")
         else:
             debug_print(f"   [LOG BROWSER] Già su '{current_url}', salto la navigazione.")
 
+        if action == "get_inputs":
+            page.wait_for_timeout(800)
+            _dismiss_popups(page)
+            elementi = page.evaluate("""() => {
+                const selectors = 'input, textarea, select, button[type="submit"], button[type="button"]';
+                return Array.from(document.querySelectorAll(selectors))
+                    .filter(el => {
+                        const r = el.getBoundingClientRect();
+                        return r.width > 0 && r.height > 0;
+                    })
+                    .map(el => {
+                        const parts = [];
+                        if (el.tagName) parts.push(el.tagName.toLowerCase());
+                        if (el.id) parts.push('#' + el.id);
+                        else if (el.name) parts.push('[name=' + el.name + ']');
+                        else if (el.type && el.type !== 'text') parts.push('[type=' + el.type + ']');
+                        return {
+                            selector: parts.join(''),
+                            type: el.type || el.tagName.toLowerCase(),
+                            placeholder: el.placeholder || '',
+                            label: el.getAttribute('aria-label') || el.getAttribute('title') || '',
+                            value: el.value || ''
+                        };
+                    })
+                    .slice(0, 30);
+            }""")
+
+            if not elementi:
+                receipt = "Nessun elemento interattivo trovato nella pagina corrente."
+                return _make_tool_response(False, receipt, receipt, receipt)
+
+            righe = [f"- selector: `{e['selector']}` | type: {e['type']} | placeholder: \"{e['placeholder']}\" | label: \"{e['label']}\"" for e in elementi]
+            details = "Elementi interattivi trovati nella pagina:\n" + "\n".join(righe)
+            summary = f"Trovati {len(elementi)} elementi interattivi nella pagina."
+            receipt = "Elementi interattivi recuperati con successo."
+            return _make_tool_response(True, receipt, summary, details)
+
         if action == "fetch":
-            
             page.wait_for_timeout(1500)
-            testo = page.inner_text("body")
+            _dismiss_popups(page)
+            testo = _extract_text(page)
             testo = re.sub(r'\n{3,}', '\n\n', testo).strip()
             testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
 
@@ -280,9 +369,9 @@ def Interagisci_con_Pagina_Web(
                 page.wait_for_load_state("networkidle", timeout=8000)
             except PlaywrightTimeoutError:
                 page.wait_for_timeout(2000)
-            testo = page.inner_text("body")
+            _dismiss_popups(page)
+            testo = _extract_text(page)
             testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
-
 
             summary = f"Click su '{selector}' eseguito. Pagina risultante estratta."
             details = f"Contenuto della pagina dopo il click:\n\n{testo_troncato}"
@@ -295,7 +384,8 @@ def Interagisci_con_Pagina_Web(
             page.locator(selector).first.fill(text_input, timeout=8000)
             page.keyboard.press("Enter")
             page.wait_for_timeout(2000)
-            testo = page.inner_text("body")
+            _dismiss_popups(page)
+            testo = _extract_text(page)
             testo_troncato = testo[:4000] + ("..." if len(testo) > 4000 else "")
 
             summary = f"Campo '{selector}' compilato con '{text_input}' e form inviato."
