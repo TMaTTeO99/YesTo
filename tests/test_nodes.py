@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 from tests.test_utils import TestUtils
-from nodes.qa import domanda_node, critique_node
+from nodes.qa import clean_state_node, domanda_node, critique_node
 from langchain_core.messages import AIMessage
 
 
@@ -62,7 +62,7 @@ class TestNodes:
         state = self.utils._make_state(
             messages=[AIMessage(content="tools_needed")]
         )
-        mock_critique_chain.invoke.return_value = MagicMock(approvato=True, critique_punti=[])
+        mock_critique_chain.invoke.return_value = MagicMock(approvato=True, punti_da_correggere=[])
         result = critique_node(state)
         assert result.get("critique_approvata") is True, "Expected critique to be approved."
         assert result.get("critique_punti") == [], "Expected critique_punti to be an empty list."
@@ -95,3 +95,22 @@ class TestNodes:
         result = critique_node(state)
         assert result.get("critique_approvata") is True, "Expected critique to be not approved."
         assert result.get("critique_punti") == [], "Expected critique_punti to be an empty list."
+
+    @patch("nodes.qa.save_conversation")    
+    def test_clean_state_node(self, mock_save_conversation):
+
+        state = self.utils._make_state(
+            messages=[AIMessage(content="test response")],
+            session_id="test_session"
+        )
+        mock_save_conversation.return_value = MagicMock(return_value=None)
+
+        result = clean_state_node(state)
+        assert result.get("threshold") == 0, "Expected threshold to be reset to 0."
+        assert result.get("critique_approvata") is False, "Expected critique_approvata to be reset to False."
+        assert result.get("critique_punti") == [], "Expected critique_punti to be reset to an empty list."
+        assert result.get("plan") == [], "Expected plan to be reset to an empty list."
+        assert result.get("past_steps") == [], "Expected past_steps to be reset to an empty list."
+        assert result.get("response") == "", "Expected response to be reset to an empty string."
+        
+    
