@@ -37,6 +37,9 @@ SELECT extname, extversion FROM pg_extension WHERE extname = 'vector';
 - Install python dependencies inside project:
 pip3 install pgvector langchain-postgres sentence-transformers
 
+- Run tests with coverage: 
+pytest tests/ --cov=. --cov-report=term-missing
+
 
 
 ## RUN
