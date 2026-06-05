@@ -1,7 +1,9 @@
 import os
+import sounddevice as sd
+import numpy as np
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.postgres import PostgresSaver
-from config import get_db_address, init_rag
+from config import get_db_address, init_rag, whisper_model
 from graph import workflow
 
 
@@ -21,6 +23,53 @@ def _handle_ingest(arg: str):
         print(f"[RAG] Testo indicizzato: {n} chunk da '{os.path.basename(path)}'")
 
 
+def listen(
+    samplerate: int = 16000,
+    silence_threshold: float = 0.01,  # volume below this = silence
+    silence_duration: float = 1.5,    # seconds of silence before stopping
+    chunk_duration: float = 0.1,      # size of each recorded chunk in seconds
+) -> np.ndarray:
+    chunk_size = int(samplerate * chunk_duration)
+    silence_chunks_needed = int(silence_duration / chunk_duration)
+
+    print("🎤 In ascolto... (parla quando vuoi)")
+    frames = []
+    silent_chunks = 0
+    speech_started = False
+
+    with sd.InputStream(samplerate=samplerate, channels=1, dtype="float32") as stream:
+        while True:
+            chunk, _ = stream.read(chunk_size)
+            volume = np.abs(chunk).mean()
+
+            if volume > silence_threshold:
+                if not speech_started:
+                    print("🔴 Voce rilevata, registrazione in corso...")
+                speech_started = True
+                silent_chunks = 0
+                frames.append(chunk)
+            elif speech_started:
+                frames.append(chunk)
+                silent_chunks += 1
+                seconds_of_silence = silent_chunks * chunk_duration
+                print(f"🔇 Silenzio: {seconds_of_silence:.1f}s / {silence_duration}s", end="\r")
+                if silent_chunks >= silence_chunks_needed:
+                    break
+
+    print("\n⏹ Registrazione terminata.")
+    return np.concatenate(frames).flatten()
+
+
+def transcribe() -> str:
+    audio = listen()
+    print("⏳ Trascrizione in corso...")
+    result = whisper_model.transcribe(audio)
+    print(f"🌍 Lingua rilevata: {result['language']}")
+    text = result["text"].strip()
+    print(f"📝 Hai detto: {text}")
+    return text
+
+
 if __name__ == "__main__":
     init_rag()
 
@@ -36,10 +85,15 @@ if __name__ == "__main__":
                 break
 
             if raw.strip().startswith("/ingest "):
-                _handle_ingest(raw.strip()[len("/ingest "):])
-                continue
+                if len(raw.strip()) <= len("/ingest "):
+                    print("[ERRORE] Comando /ingest richiede un percorso di file. Esempio: /ingest /path/to/file.pdf")
+                else:
+                    _handle_ingest(raw.strip()[len("/ingest "):])
 
-            prompt = raw
+            if raw.strip() == "/voice":
+                prompt = transcribe()
+            else:
+                prompt = raw
             config = {"configurable": {"thread_id": session_id}}
             state = {
                 "session_id": session_id,

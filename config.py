@@ -1,5 +1,6 @@
 import os
 import threading
+import whisper
 from dotenv import load_dotenv
 from langchain_community.tools import DuckDuckGoSearchRun
 from langchain_ollama import ChatOllama
@@ -34,7 +35,13 @@ class _AgentResources:
             return
 
         debug_print("🧠 [SINGLETON] Inizializzazione della risorsa LLM...")
+
+        # it can be substituted with any other LLM.
         self._llm = ChatOllama(model="llama3.1", temperature=0)
+        
+        # model to record and transcribe audio.
+        self._whisper_model = whisper.load_model("base")
+        
         self._web_search = None
         self._engine = None
 
@@ -69,13 +76,17 @@ class _AgentResources:
             debug_print("🌐 [SINGLETON] Istanziazione del client DuckDuckGo Search...")
             self._web_search = DuckDuckGoSearchRun()
         return self._web_search
+    
+    @property
+    def whisper_model(self):
+        return self._whisper_model
 
 
 _resources = _AgentResources()
 
 # Module-level shortcuts
 llm = _resources.llm
-
+whisper_model = _resources.whisper_model
 
 def get_engine():
     return _resources.engine

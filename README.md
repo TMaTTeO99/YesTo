@@ -40,7 +40,8 @@ pip3 install pgvector langchain-postgres sentence-transformers
 - Run tests with coverage: 
 pytest tests/ --cov=. --cov-report=term-missing
 
-
+- Library needed:
+    sudo apt-get install libportaudio2
 
 ## RUN
 - `python3 main.py`
