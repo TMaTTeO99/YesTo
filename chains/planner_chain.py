@@ -5,9 +5,14 @@ from config import llm
 
 
 class PlanSchema(BaseModel):
+    
+    ragionamento: str = Field(
+        description="Ragionamento step-by-step prima di generare il piano: analisi della richiesta, strumenti rilevanti, numero minimo di task."
+    )
     sotto_task: List[str] = Field(
         description="Lista ordinata di sotto-task sequenziali necessari per rispondere alla domanda dell'utente. Ogni task deve essere atomico e chiaro."
     )
+    
 
 
 class RePlanningSchema(BaseModel):
@@ -42,9 +47,16 @@ _planner_prompt = ChatPromptTemplate.from_messages([
         "   (2) 'Individua gli elementi interattivi della pagina con get_inputs'\n"
         "   (3) 'Compila il campo di ricerca con <testo> e invia'\n"
         "   Non accorpare questi step e non sostituire il task (2) con un altro fetch.\n"
+        "REGOLE CoT:\n"
+        "Prima di generare il piano, ragiona ad alta voce:\n"\
+        "- Cosa sta chiedendo esattamente l'utente?\n" \
+        "- Quali strumenti disponibili sono rilevanti?\n" \
+        "- Qual è il numero MINIMO di task necessari?\n\n" \
         "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
-    ("user", "Richiesta dell'utente:\n\n{original_text}")
+    ("user", (
+        "Richiesta dell'utente:\n\n{original_text}"
+    ))
 ])
 
 _replanner_prompt = ChatPromptTemplate.from_messages([

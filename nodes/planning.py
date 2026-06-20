@@ -1,6 +1,5 @@
 from typing import Literal
-from langchain_core.messages import AIMessage
-from state import AgentState
+from state import PlanningState
 from chains.planner_chain import planner_chain, replanner_chain
 from chains.executor_chain import executor_chain, tools_map
 from chains.summary_chain import summary_chain
@@ -62,14 +61,15 @@ def _normalize_tool_result(tool_name: str, raw) -> dict:
 # Nodes
 # ---------------------------------------------------------------------------
 
-def planning_init_node(state: AgentState):
+def planning_init_node(state: PlanningState):
     debug_print("📋 [PLANNING] Nodo INIT - Generazione del piano di lavoro...")
     result = planner_chain.invoke({"original_text": state["original_text"]})
     debug_print(f"   [LOG PLANNER] Task pianificati: {result.sotto_task}")
+    debug_print(f"   [LOG PLANNER] Raggionamento: {result.ragionamento}")
     return {"plan": result.sotto_task, "past_steps": [], "response": ""}
 
 
-def execution_node(state: AgentState):
+def execution_node(state: PlanningState):
     current_plan = list(state.get("plan", []))
     if not current_plan:
         return {"plan": []}
@@ -109,7 +109,7 @@ def execution_node(state: AgentState):
     return {"plan": current_plan, "past_steps": new_steps}
 
 
-def replanner_node(state: AgentState):
+def replanner_node(state: PlanningState):
     debug_print("🧠 [PLANNING] Nodo RE-PLANNER - Valutazione dello stato del piano...")
 
     current_plan = list(state.get("plan", []))
@@ -156,19 +156,19 @@ def replanner_node(state: AgentState):
     return {"plan": new_plan}
 
 
-def merge_tools_output_node(state: AgentState):
+def merge_tools_output_node(state: PlanningState):
     debug_print("🎯 [PLANNING] Nodo MERGE - Confezionamento risposta finale...")
     past_steps = state.get("past_steps", [])
 
     if not past_steps:
         msg = "Mi dispiace, si è verificato un problema durante l'esecuzione delle operazioni."
-        return {"response": msg, "messages": [AIMessage(content=msg)]}
+        return {"response": msg}
 
     context = _build_final_context(past_steps)
     final = tools_output_chain.invoke({"tools_outputs": context, "original_text": state["original_text"]})
     debug_print("   [LOG MERGE] Risposta completata con successo.")
-    return {"plan": [], "response": final, "messages": [AIMessage(content=final)]}
+    return {"plan": [], "response": final}
 
 
-def planning_routing_logic(state: AgentState) -> Literal["continue_execution", "go_to_final_response"]:
+def planning_routing_logic(state: PlanningState) -> Literal["continue_execution", "go_to_final_response"]:
     return "continue_execution" if state.get("plan") else "go_to_final_response"

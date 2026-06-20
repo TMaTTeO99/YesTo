@@ -25,7 +25,13 @@ _prompt = ChatPromptTemplate.from_messages([
         "  2. Usa action='fill' con il selector ESATTO trovato nel risultato di get_inputs.\n"
         "  NON indovinare il selector: usa SOLO selettori restituiti da get_inputs o visibili nel testo della pagina.\n"
         "  NON usare action='fetch' per eseguire una ricerca: fetch legge solo la pagina, non digita nulla.\n\n"
-        "Rispondi descrivendo l'azione fatta o mostrando i dati reali ottenuti dagli strumenti."
+        "REGOLE GENERALI:\n"
+        "Prima di usare qualsiasi tool, scrivi esplicitamente:\n"
+        "RAGIONAMENTO: [perché stai scegliendo questo tool e questo input]\n"
+        "AZIONE: [quale tool chiami]\n"
+        "Dopo aver ricevuto il risultato, scrivi:\n"
+        "OSSERVAZIONE: [cosa hai imparato dal risultato]\n"
+        "RISPOSTA FINALE: [la risposta al sotto-task]\n"
     )),
     ("user", (
         "📊 DIARIO DI BORDO (Passi già fatti):\n"
