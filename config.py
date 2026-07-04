@@ -36,8 +36,9 @@ class _AgentResources:
 
         debug_print("🧠 [SINGLETON] Inizializzazione della risorsa LLM...")
 
+        ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         # it can be substituted with any other LLM.
-        self._llm = ChatOllama(model="llama3.1", temperature=0)
+        self._llm = ChatOllama(model="llama3.1", base_url=ollama_host, temperature=0)
         
         # model to record and transcribe audio.
         self._whisper_model = whisper.load_model("base")
@@ -45,11 +46,11 @@ class _AgentResources:
         self._web_search = None
         self._engine = None
 
-        db_user = os.getenv("DB_USER", "postgres")
-        db_passwd = os.getenv("DB_PASSWD", "")
+        db_user = os.getenv("POSTGRES_USER", "postgres")
+        db_passwd = os.getenv("POSTGRES_PASSWORD", "")
         db_host = os.getenv("DB_HOST", "localhost")
         db_port = os.getenv("DB_PORT") or "5432"
-        db_name = os.getenv("DB_NAME", "postgres")
+        db_name = os.getenv("POSTGRES_DB", "postgres")
         self._db_address = f"postgresql://{db_user}:{db_passwd}@{db_host}:{db_port}/{db_name}"
 
         self._initialized = True

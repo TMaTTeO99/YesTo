@@ -43,5 +43,13 @@ pytest tests/ --cov=. --cov-report=term-missing
 - Library needed:
     sudo apt-get install libportaudio2
 
+
+## SPECIAL ISTRUCTION 
+docker compose up --build -d psql-db my-ollama
+
+docker compose exec my-ollama ollama pull llama3.1
+
+docker compose run --rm yes-to
+
 ## RUN
 - `python3 main.py`

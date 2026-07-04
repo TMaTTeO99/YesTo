@@ -1,0 +1,38 @@
+services:
+  psql-db:
+    image: pgvector/pgvector:pg16
+    networks:
+      - yes-to-network
+    env_file:
+      - .env
+    volumes:
+      - my-volume:/var/lib/postgresql/data
+      - ./postgres-vector/init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  my-ollama:
+    image: ollama/ollama
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - yes-to-network
+
+  yes-to:
+    depends_on:
+      - psql-db
+      - my-ollama
+    env_file:
+      - .env
+    stdin_open: true
+    tty: true
+    networks:
+      - yes-to-network
+    build:
+      context: .
+      dockerfile: ./Dockerfile
+
+networks:
+  yes-to-network:
+    
+volumes:
+  my-volume:
+  ollama-data:
