@@ -19,10 +19,6 @@ class AgentState(TypedDict):
     # sovrascrivere l'intera lista ad ogni aggiornamento dello stato
     messages: Annotated[list[BaseMessage], add_messages]
     
-    # Riassunto testuale delle conversazioni più vecchie, usato quando i messaggi
-    # superano il buffer e vengono compressi per risparmiare token
-    message_summary: str
-    
     # Buffer temporaneo dei messaggi da riassumere prima di scartarli
     message_buffer: list[BaseMessage]
 
@@ -57,6 +53,9 @@ class PlanningState(TypedDict):
     # Storico dei task già eseguiti con il loro risultato, usato dal replanner
     # per decidere se continuare o correggere il piano
     past_steps: List[dict]
+
+    # Riassunto dei passi precedenti, usato per compressione memoria
+    old_steps_summary: str  
     
     # Risposta finale sintetizzata dopo che tutti i tool hanno restituito i
     # loro risultati; è quello che viene mostrato all'utente a fine planning

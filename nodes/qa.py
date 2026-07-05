@@ -1,17 +1,11 @@
 from typing import Literal
-from langchain_core.messages import AIMessage, BaseMessage
+from langchain_core.messages import AIMessage
 from state import AgentState
 from chains.qa_chain import qa_chain
 from chains.critique_chain import critique_chain
 from config import debug_print
 from memory.vector_store import search_all, save_conversation
-
-
-def _build_chat_history(state: AgentState) -> list[BaseMessage]:
-    all_messages = state.get("messages", [])
-    # Keep only the last 6 messages to avoid context bloat
-    return all_messages[-6:] if len(all_messages) > 6 else all_messages
-
+from nodes.node_utils import _build_chat_history
 
 def domanda_node(state: AgentState):
     debug_print(f"🤖 [GRAFO] Nodo DOMANDA - Esecuzione (Tentativo {state.get('threshold', 0) + 1})")

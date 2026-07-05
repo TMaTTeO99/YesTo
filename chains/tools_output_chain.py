@@ -9,6 +9,9 @@ _prompt = ChatPromptTemplate.from_messages([
         "Prendi le risposte ottenute dagli strumenti, uniscile in modo logico e strutturato, e restituisci un'unica risposta finale chiara e completa da mostrare all'utente.\n"
         "Se le risposte degli strumenti sono incomplete o insufficienti, restituisci comunque la risposta più completa possibile basata sui dati ottenuti, senza inventare nulla.\n"
         "Non includere mai la stringa 'tools_needed' nella risposta finale.\n"
+        "REGOLE:\n"
+        "- La risposta finale deve essere coerente e ben strutturata.\n"
+        "- La risposta finale deve fare riferimento diretto alla richiesta iniziale.\n"
     )),
     ("user", (
         "Ecco le informazioni disponibili:\n\n"

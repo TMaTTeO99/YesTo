@@ -1,11 +1,13 @@
 from typing import Literal
 from state import PlanningState
 from chains.planner_chain import planner_chain, replanner_chain
-from chains.executor_chain import executor_chain, tools_map
+from chains.executor_chain import executor_chain, tools_map, observation_chain
 from chains.summary_chain import summary_chain
 from chains.early_stop_chain import early_stop_chain
 from chains.tools_output_chain import tools_output_chain
+from chains.critique_plan_result import critique_plan_result_chain
 from config import debug_print
+from nodes.node_utils import _call_replanner_node
 import json
 
 MAX_PAST_STEP_BUFFER = 4
@@ -15,7 +17,7 @@ MAX_PAST_STEP_BUFFER = 4
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _compact_past_steps(past_steps: list[dict]) -> list[dict]:
+def _compact_past_steps(past_steps: list[dict], old_steps_summary: str = None) -> list[dict]:
     """Summarize old steps when the buffer exceeds MAX_PAST_STEP_BUFFER to save context."""
     if len(past_steps) <= MAX_PAST_STEP_BUFFER:
         return past_steps
@@ -23,14 +25,14 @@ def _compact_past_steps(past_steps: list[dict]) -> list[dict]:
     recent = past_steps[-MAX_PAST_STEP_BUFFER:]
     old = past_steps[:-MAX_PAST_STEP_BUFFER]
     summarized = summary_chain.invoke({
-        "existing_summary": "",
-        "input_text": "\n".join(f"Task: {s['task']}\nRisultato: {s['details']}" for s in old),
+        "existing_summary": old_steps_summary or "",
+        "input_text": "\n".join(f"Task: {s['task']}\nRisultato: {s['receipt']}" for s in old),
     })
     return [{"task": "Passi precedenti compressi", "receipt": summarized, "summary": summarized, "details": summarized}] + recent
 
 
-def _build_steps_context(past_steps: list[dict]) -> str:
-    compacted = _compact_past_steps(past_steps)
+def _build_steps_context(past_steps: list[dict], old_steps_summary: str = None) -> str:
+    compacted = _compact_past_steps(past_steps, old_steps_summary)
     return "\n".join(f"Task: {s['task']}\nRicevuta: {s['details']}" for s in compacted)
 
 
@@ -85,24 +87,31 @@ def execution_node(state: PlanningState):
     new_steps = list(past_steps)
 
     if hasattr(result, "tool_calls") and result.tool_calls:
-        outputs = []
         for call in result.tool_calls:
             name = call["name"]
             args = call.get("args", {})
             debug_print(f"   [LOG EXECUTOR] Chiamata tool: {name} con args {args}")
 
             if name in tools_map:
+
                 raw = tools_map[name].invoke(args)
                 normalized = _normalize_tool_result(name, raw)
-                debug_print(f"   [LOG EXECUTOR] Risultato '{name}': {normalized['receipt']}")
-                outputs.append(f"[{name}]: {normalized['details']}")
-                new_steps.append({"task": task, **normalized})
+
+                debug_print(f"[LOG EXECUTOR] Risultato '{name}': {normalized['details']}")
+                
+                obs = observation_chain.invoke({
+                    "current_task": task,
+                    "tool_result": normalized["details"],
+                })
+                debug_print(f"   [LOG EXECUTOR] Osservazione: {obs.content}")
+                new_steps.append({"task": task, **normalized, "summary": obs.content})
             else:
                 err = f"[ERROR]: tool '{name}' non riconosciuto."
-                outputs.append(err)
                 new_steps.append({"task": task, "tool_name": name, "receipt": err, "summary": err, "details": err})
     else:
+
         text = result.content if hasattr(result, "content") else str(result)
+        debug_print(f"[LOG EXECUTOR] Risultato: {text}")
         new_steps.append({"task": task, "tool_name": "no_tool", "receipt": text, "summary": text, "details": text})
 
     debug_print("   [LOG EXECUTOR] Task completato.")
@@ -121,13 +130,9 @@ def replanner_node(state: PlanningState):
     last_receipt = str(past_steps[-1]["receipt"])
     debug_print(f"   [LOG RE-PLANNER] Ultimo risultato: {str(past_steps[-1]['details'])}")
 
-    if "[ERROR]" not in last_receipt and not current_plan:
-        debug_print("   🛑 [GUARDRAIL] Obiettivo raggiunto e piano esaurito. Uscita forzata.")
-        return {"plan": []}
-
     if "[ERROR]" not in last_receipt and current_plan:
         debug_print(f"   [LOG RE-PLANNER] Tutto procede bene. Task rimanenti: {len(current_plan)}")
-        context = _build_steps_context(past_steps)
+        context = _build_steps_context(past_steps, state.get("old_steps_summary"))
         remaining = "\n".join(f"- {t}" for t in current_plan)
 
         early = early_stop_chain.invoke({
@@ -141,20 +146,27 @@ def replanner_node(state: PlanningState):
             debug_print("   🛑 [EARLY STOP] Obiettivo già raggiunto. Salto i task rimanenti.")
             return {"plan": []}
 
-        return {}
+        return {"old_steps_summary" : context}
 
-    debug_print("   ⚠️ [LOG RE-PLANNER] Errore rilevato. Interpello LLM per ri-pianificare...")
-    context = _build_steps_context(past_steps)
-    res = replanner_chain.invoke({"original_text": state["original_text"], "past_steps_context": context})
 
-    if res.stop:
-        debug_print("   [LOG RE-PLANNER] LLM ha confermato di interrompere.")
-        return {"plan": []}
+    if "[ERROR]" not in last_receipt and not current_plan:
 
-    new_plan = res.new_plan or []
-    debug_print(f"   [LOG RE-PLANNER] Nuovo piano: {new_plan}")
-    return {"plan": new_plan}
+        context = _build_steps_context(past_steps, state.get("old_steps_summary"))
+        result_critique = critique_plan_result_chain.invoke({ "original_text" : state.get("original_text"), "past_steps_context" : context})
+        
+        if result_critique.approvato:
+            debug_print("   🛑 [GUARDRAIL] Obiettivo raggiunto e piano esaurito. Uscita forzata.")
+            return {"plan": []}
+        else:
+            debug_print("   ⚠️ [LOG RE-PLANNER] Errore rilevato. Interpello LLM per ri-pianificare...")
+            return _call_replanner_node(state, context)
+            
+    if "[ERROR]" in last_receipt:
 
+        debug_print("   ⚠️ [LOG RE-PLANNER] Errore rilevato. Interpello LLM per ri-pianificare...")
+        context = _build_steps_context(past_steps, state.get("old_steps_summary"))
+        
+        return _call_replanner_node(state, context)
 
 def merge_tools_output_node(state: PlanningState):
     debug_print("🎯 [PLANNING] Nodo MERGE - Confezionamento risposta finale...")

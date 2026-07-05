@@ -79,7 +79,7 @@ if __name__ == "__main__":
 
         session_id = input("Inserire Id Sessione:\n")
         while True:
-            raw = input("Inserire 1 per uscire, /ingest <file> per caricare documenti, oppure il tuo prompt:\n")
+            raw = input("Inserire 1 per uscire, /ingest <file> per caricare documenti, /voice per parlare, oppure il tuo prompt:\n")
 
             if raw.strip() == "1":
                 break

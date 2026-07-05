@@ -1,6 +1,11 @@
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from config import llm
+from pydantic import BaseModel, Field
+
+class SummarySchema(BaseModel):
+    summary: str = Field(
+        description="Testo sintetizzato della conversazione tra l'utente e l'agente. Deve essere conciso, chiaro e mantenere il contesto essenziale.\n"
+    )
 
 
 _prompt = ChatPromptTemplate.from_messages([
@@ -16,4 +21,4 @@ _prompt = ChatPromptTemplate.from_messages([
     ))
 ])
 
-summary_chain = _prompt | llm | StrOutputParser()
+summary_chain = _prompt | llm.with_structured_output(SummarySchema)

@@ -22,7 +22,8 @@ class RouterSchema(BaseModel):
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei il Router Principale di un sistema aziendale avanzato. Il tuo unico scopo è classificare l'input dell'utente.\n\n"
+        "Sei il Router Principale di un sistema aziendale avanzato. Il tuo unico scopo è classificare l'input dell'utente.\n"
+        "Utilizza anche i messaggi precedenti della conversazione per capire meglio il contesto.\n\n"
         "CATEGORIE AMMESSE:\n"
         "- 'domanda': Richieste di dati, creazione tabelle, analisi, query, compiti operativi o domande di cultura generale.\n"
         "- 'saluto': Cortesia, saluti, ringraziamenti.\n"
@@ -36,7 +37,8 @@ _prompt = ChatPromptTemplate.from_messages([
         "5. User: 'asdffg123' -> classification: 'incomprensibile'\n\n"
         "Analizza l'input dell'utente, compila la giustificazione e seleziona la classificazione corretta."
     )),
-    ("user", "Input utente da classificare: {original_text}")
+    ("user", "Input utente da classificare: {original_text}\n"
+             "Messaggi precedenti: {message_summary}\n")
 ])
 
 router_chain = _prompt | llm.with_structured_output(RouterSchema)

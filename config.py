@@ -37,7 +37,7 @@ class _AgentResources:
         debug_print("🧠 [SINGLETON] Inizializzazione della risorsa LLM...")
 
         # it can be substituted with any other LLM.
-        self._llm = ChatOllama(model="llama3.1", temperature=0)
+        self._llm = ChatOllama(model="llama3.1")
         
         # model to record and transcribe audio.
         self._whisper_model = whisper.load_model("base")
