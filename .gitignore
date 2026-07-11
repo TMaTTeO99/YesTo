@@ -8,7 +8,8 @@ output.txt
 .claude/*
 PersonalNote.md
 .coverage
+.mcp.json
+PERSONAL_README.md
+.claude_checkpoint.txt
 logs
 logs/*
-PERSONAL_README.md
-.mcp.json

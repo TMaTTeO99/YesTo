@@ -60,3 +60,23 @@ class PlanningState(TypedDict):
     # Risposta finale sintetizzata dopo che tutti i tool hanno restituito i
     # loro risultati; è quello che viene mostrato all'utente a fine planning
     response: str
+
+class ToolsState(TypedDict):
+
+    # Testo originale dell'utente per il turno corrente; può essere arricchito con
+    # chat history prima di entrare nel sotto-grafo di planning
+    original_text: str
+    
+    # --- Sotto-grafo di planning ---
+    # Lista ordinata di sotto-task prodotta dal planner; l'execution node
+    # consuma un task alla volta facendo pop dal primo elemento
+    plan: List[str]
+
+
+    # agent chosen to execute the plan; this is set by the tools_supervisor node
+    tool_agent: str
+
+    # Storico dei task già eseguiti con il loro risultato, propagato dal
+    # sotto-grafo di esecuzione (supervisor + specialisti) verso il grafo
+    # di planning padre
+    past_steps: List[dict]

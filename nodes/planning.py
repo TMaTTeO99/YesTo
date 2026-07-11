@@ -1,7 +1,6 @@
 from typing import Literal
 from state import PlanningState
-from chains.planner_chain import planner_chain, replanner_chain
-from chains.executor_chain import executor_chain, tools_map, observation_chain
+from chains.planner_chain import planner_chain
 from chains.summary_chain import summary_chain
 from chains.early_stop_chain import early_stop_chain
 from chains.tools_output_chain import tools_output_chain
@@ -71,52 +70,6 @@ def planning_init_node(state: PlanningState):
     return {"plan": result.sotto_task, "past_steps": [], "response": ""}
 
 
-def execution_node(state: PlanningState):
-    current_plan = list(state.get("plan", []))
-    if not current_plan:
-        return {"plan": []}
-
-    task = current_plan.pop(0)
-    debug_print(f"🎯 [PLANNING] Nodo EXECUTION - Task attuale: '{task}'")
-
-    past_steps = state.get("past_steps", [])
-    context = "".join(f"- Task: {s['task']} -> Risultato: {s['details']}\n" for s in past_steps) or "Nessun task eseguito in precedenza."
-
-    result = executor_chain.invoke({"current_task": task, "past_steps_context": context})
-
-    new_steps = list(past_steps)
-
-    if hasattr(result, "tool_calls") and result.tool_calls:
-        for call in result.tool_calls:
-            name = call["name"]
-            args = call.get("args", {})
-            debug_print(f"   [LOG EXECUTOR] Chiamata tool: {name} con args {args}")
-
-            if name in tools_map:
-
-                raw = tools_map[name].invoke(args)
-                normalized = _normalize_tool_result(name, raw)
-
-                debug_print(f"[LOG EXECUTOR] Risultato '{name}': {normalized['details']}")
-                
-                obs = observation_chain.invoke({
-                    "current_task": task,
-                    "tool_result": normalized["details"],
-                })
-                debug_print(f"   [LOG EXECUTOR] Osservazione: {obs.content}")
-                new_steps.append({"task": task, **normalized, "summary": obs.content})
-            else:
-                err = f"[ERROR]: tool '{name}' non riconosciuto."
-                new_steps.append({"task": task, "tool_name": name, "receipt": err, "summary": err, "details": err})
-    else:
-
-        text = result.content if hasattr(result, "content") else str(result)
-        debug_print(f"[LOG EXECUTOR] Risultato: {text}")
-        new_steps.append({"task": task, "tool_name": "no_tool", "receipt": text, "summary": text, "details": text})
-
-    debug_print("   [LOG EXECUTOR] Task completato.")
-    return {"plan": current_plan, "past_steps": new_steps}
-
 
 def replanner_node(state: PlanningState):
     debug_print("🧠 [PLANNING] Nodo RE-PLANNER - Valutazione dello stato del piano...")
@@ -140,7 +93,7 @@ def replanner_node(state: PlanningState):
             "past_steps_context": context,
             "remaining_tasks": remaining,
         })
-        debug_print(f"   [LOG EARLY-STOP] obiettivo_raggiunto={early.obiettivo_raggiunto} | {early.motivazione}")
+        debug_print(f"[LOG EARLY-STOP] obiettivo_raggiunto={early.obiettivo_raggiunto} | {early.motivazione}")
 
         if early.obiettivo_raggiunto:
             debug_print("   🛑 [EARLY STOP] Obiettivo già raggiunto. Salto i task rimanenti.")
