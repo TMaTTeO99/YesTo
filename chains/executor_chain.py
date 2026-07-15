@@ -20,9 +20,9 @@ _web_prompt = ChatPromptTemplate.from_messages([
         "- Non limitarti a riportare i risultati grezzi della ricerca: sintetizza solo le informazioni rilevanti al sotto-task.\n"
     )),
     ("user", (
-        "📊 DIARIO DI BORDO (Passi già fatti):\n"
+        "DIARIO DI BORDO (Passi già fatti):\n"
         "{past_steps_context}\n\n"
-        "🎯 SOTTO-TASK ATTUALE DA RISOLVERE ORA:\n"
+        "SOTTO-TASK ATTUALE DA RISOLVERE ORA:\n"
         "{current_task}"
     ))
 ])
@@ -38,9 +38,9 @@ _db_prompt = ChatPromptTemplate.from_messages([
         "- Non inventare mai nomi di tabelle o colonne: usa solo quelli confermati dai tool.\n"
     )),
     ("user", (
-        "📊 DIARIO DI BORDO (Passi già fatti):\n"
+        "DIARIO DI BORDO (Passi già fatti):\n"
         "{past_steps_context}\n\n"
-        "🎯 SOTTO-TASK ATTUALE DA RISOLVERE ORA:\n"
+        "SOTTO-TASK ATTUALE DA RISOLVERE ORA:\n"
         "{current_task}"
     ))
 ])
@@ -54,8 +54,8 @@ _observation_prompt = ChatPromptTemplate.from_messages([
         "RISPOSTA FINALE: [la risposta al sotto-task basata sul risultato]\n"
     )),
     ("user", (
-        "🎯 SOTTO-TASK: {current_task}\n\n"
-        "📥 RISULTATO DEL TOOL:\n{tool_result}"
+        "SOTTO-TASK: {current_task}\n\n"
+        "RISULTATO DEL TOOL:\n{tool_result}"
     ))
 ])
 

@@ -40,9 +40,9 @@ _prompt = ChatPromptTemplate.from_messages([
         "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
     ("user", (
-        "🎯 RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
-        "✅ RISULTATI OTTENUTI FINORA:\n{past_steps_context}\n\n"
-        "📋 TASK RIMANENTI NEL PIANO (potrebbero essere superflui):\n{remaining_tasks}"
+        "RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
+        "RISULTATI OTTENUTI FINORA:\n{past_steps_context}\n\n"
+        "TASK RIMANENTI NEL PIANO (potrebbero essere superflui):\n{remaining_tasks}"
     ))
 ])
 

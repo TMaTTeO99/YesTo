@@ -70,8 +70,8 @@ _replanner_prompt = ChatPromptTemplate.from_messages([
         "Genera l'output strutturato rispettando rigorosamente queste regole."
     )),
     ("user", (
-        "🎯 RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
-        "📊 DIARIO DI BORDO (Task eseguiti e relativi risultati, incluso l'errore):\n"
+        "RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
+        "DIARIO DI BORDO (Task eseguiti e relativi risultati, incluso l'errore):\n"
         "{past_steps_context}"
     ))
 ])

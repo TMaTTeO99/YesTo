@@ -13,3 +13,6 @@ PERSONAL_README.md
 .claude_checkpoint.txt
 logs
 logs/*
+test-finetuned-env
+fine_tuned_model.py
+data
