@@ -4,20 +4,20 @@ from pydantic import BaseModel, Field
 
 class SummarySchema(BaseModel):
     summary: str = Field(
-        description="Testo sintetizzato della conversazione tra l'utente e l'agente. Deve essere conciso, chiaro e mantenere il contesto essenziale.\n"
+        description="Summarized text of the conversation between the user and the agent. Must be concise, clear, and preserve the essential context.\n"
     )
 
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei un assistente di sintesi molto efficiente. Riceverai un riassunto storico esistente e un nuovo blocco di testo da comprimere.\n"
-        "Il tuo compito è restituire un solo paragrafo brevissimo, denso e fedele al contenuto, mantenendo solo le informazioni rilevanti, gli obiettivi e gli elementi azione.\n"
-        "Non aggiungere spiegazioni superflue, non inventare informazioni e non inserire date o altri metadati."
+        "You are a highly efficient summarization assistant. You will receive an existing historical summary and a new block of text to compress.\n"
+        "Your job is to return a single very short paragraph, dense and faithful to the content, keeping only relevant information, goals, and action items.\n"
+        "Do not add superfluous explanations, do not invent information, and do not insert dates or other metadata."
     )),
     ("user", (
-        "Riassunto storico precedente:\n{existing_summary}\n\n"
-        "Testo da sintetizzare:\n{input_text}\n\n"
-        "Restituisci un paragrafo compatto che sintetizza il materiale fornito e conserva il senso principale della conversazione o dei passi completati."
+        "Previous historical summary:\n{existing_summary}\n\n"
+        "Text to summarize:\n{input_text}\n\n"
+        "Return a compact paragraph that summarizes the provided material and preserves the main sense of the conversation or completed steps."
     ))
 ])
 

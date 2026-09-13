@@ -6,42 +6,51 @@ from config import llm
 class QAResponse(BaseModel):
     needs_tools: bool = Field(
         description=(
-            "TRUE se la richiesta richiede: accesso al database, dati aziendali specifici, "
-            "creazione/modifica di tabelle, ricerche web in tempo reale, o qualsiasi azione operativa. "
-            "FALSE se puoi rispondere con conoscenza generale statica o con la cronologia della chat."
+            "TRUE if the request requires: database access, specific company data, "
+            "creating/modifying tables, real-time web searches, or any operational action. "
+            "FALSE if you can answer with static general knowledge or the chat history."
         )
     )
     answer: str = Field(
         description=(
-            "Se needs_tools è FALSE: la risposta completa alla domanda dell'utente. "
-            "Se needs_tools è TRUE: lascia questo campo vuoto ('')."
+            "If needs_tools is FALSE: the complete answer to the user's question. "
+            "If needs_tools is TRUE: leave this field empty ('')."
         )
     )
 
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei un assistente aziendale interno. Decidi se puoi rispondere con la tua conoscenza "
-        "generale/cronologia della chat, oppure se servono strumenti esterni.\n\n"
-        "USA needs_tools=TRUE per:\n"
-        "- Qualsiasi operazione sul database (elencare tabelle, creare tabelle, leggere dati)\n"
-        "- Dati aziendali specifici (ordini, clienti, listini, report)\n"
-        "- Ricerche web, notizie recenti, dati in tempo reale\n"
-        "- Analisi di file o dati che non hai in memoria\n\n"
-        "USA needs_tools=FALSE per:\n"
-        "- Conoscenza generale statica (capitali, definizioni, storia, matematica...)\n"
-        "- Saluti, cortesie, chiacchiere\n"
-        "- Domande che puoi rispondere dalla chat_history o dal contesto RAG\n\n"
-        "ESEMPI:\n"
+        "You are an internal company assistant. Decide whether you can answer with your "
+        "general knowledge/chat history, or whether external tools are needed.\n\n"
+        "USE needs_tools=TRUE for:\n"
+        "- Any database operation (listing tables, creating tables, reading data)\n"
+        "- Specific company data \n"
+        "- Web searches, recent news, real-time data\n"
+        "- Any question about the content of documents, PDFs, files, manuals, policies, or anything that "
+        "  would live in an internal knowledge base — you have NO document content available here, only chat_history\n"
+        "- ANY message that asks to retry, search again, use tools, search online/in the knowledge base, or "
+        "  otherwise instructs you to look something up — even a short imperative like 'riprova', 'cerca dinuovo', "
+        "  'cerca nella tua conoscenza' — MUST be needs_tools=True. Never answer these from memory/general knowledge, "
+        "  and never say 'I already searched and found nothing' instead of actually triggering a new search.\n"
+        "- If you don't know the answare to the user, never invent the answare\n"
+        "- Analysis of files or data you don't have in memory\n\n"
+        "USE needs_tools=FALSE for:\n"
+        "- Static general knowledge (capitals, definitions, history, math...)\n"
+        "- Greetings, courtesy, small talk\n"
+        "- Questions you can answer purely from chat_history (this conversation's own prior turns), "
+        "  NOT from any document or knowledge base\n\n"
+        "EXAMPLES:\n"
         "- 'Qual è la capitale della Francia?' -> needs_tools=False, answer='Parigi'\n"
         "- 'Controlla l'ultimo ordine di Matteo' -> needs_tools=True, answer=''\n"
         "- 'Mostrami le tabelle del database' -> needs_tools=True, answer=''\n"
         "- 'Ciao come stai?' -> needs_tools=False, answer='Ciao! Sto bene, grazie.'\n"
-        "- 'Quali sono i prezzi del nostro listino?' -> needs_tools=True, answer=''\n\n"
-        "{rag_context}"
+        "- 'Quali sono i prezzi del nostro listino?' -> needs_tools=True, answer=''\n"
+        "- 'Qual è l'indice del libro X?' / 'Cosa dice il documento che ho caricato?' -> needs_tools=True, answer=''\n"
+        "- 'riprova' / 'cerca dinuovo' / 'cerca nella tua conoscenza' -> needs_tools=True, answer=''\n\n"
     )),
     MessagesPlaceholder(variable_name="chat_history"),
-    ("user", "Domanda dell'utente: {original_text}")
+    ("user", "User question: {original_text}")
 ])
 
 qa_chain = _prompt | llm.with_structured_output(QAResponse)

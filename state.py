@@ -61,6 +61,10 @@ class PlanningState(TypedDict):
     # loro risultati; è quello che viene mostrato all'utente a fine planning
     response: str
 
+    past_conversation: str
+
+    past_plan: bool
+
 class ToolsState(TypedDict):
 
     # Testo originale dell'utente per il turno corrente; può essere arricchito con

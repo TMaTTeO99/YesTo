@@ -7,71 +7,97 @@ from config import llm
 class PlanSchema(BaseModel):
     
     ragionamento: str = Field(
-        description="Ragionamento step-by-step prima di generare il piano: analisi della richiesta, strumenti rilevanti, numero minimo di task."
+        description="Step-by-step reasoning before generating the plan: analysis of the request, relevant tools, minimum number of tasks."
     )
     sotto_task: List[str] = Field(
-        description="Lista ordinata di sotto-task sequenziali necessari per rispondere alla domanda dell'utente. Ogni task deve essere atomico e chiaro."
+        description="Ordered list of sequential sub-tasks needed to answer the user's question. Each task must be atomic and clear."
     )
     
 
 
 class RePlanningSchema(BaseModel):
     stop: bool = Field(
-        description="True se l'errore è insuperabile e non è possibile procedere in nessun modo. "
-                    "False nella quasi totalità dei casi: devi sempre tentare un piano correttivo."
+        description="True if the error is insurmountable and there is no way to proceed. "
+                    "False in almost all cases: you must always attempt a corrective plan."
     )
     new_plan: Optional[List[str]] = Field(
         default=None,
-        description="Lista AGGIORNATA dei sotto-task rimanenti per recuperare dall'errore. "
-                    "Deve contenere un task correttivo o alternativo che risolva il problema riscontrato."
+        description="UPDATED list of remaining sub-tasks to recover from the error. "
+                    "Must contain a corrective or alternative task that resolves the problem encountered."
     )
 
 
 _planner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei il Capo Progetto di un sistema agentico avanzato.\n"
-        "Il tuo compito è scomporre la richiesta dell'utente nel MINIMO numero di sotto-task "
-        "strettamente necessari per rispondere, senza aggiungere passaggi accessori o di contorno.\n\n"
-        "REGOLE TASSATIVE:\n"
-        "1. MINIMALISMO: pianifica solo le azioni indispensabili. Se una singola ricerca web o "
-        "   una singola query DB è sufficiente, il piano ha UN solo task.\n"
-        "2. Non aggiungere task di verifica, raccolta dettagli aggiuntivi, o controlli "
-        "   se non esplicitamente richiesti dall'utente.\n"
-        "3. Ogni task deve essere atomico e indipendente: se due azioni possono essere "
-        "   fuse in una sola query/ricerca, accorpale.\n"
-        "REGOLE CoT:\n"
-        "Prima di generare il piano, ragiona ad alta voce:\n"\
-        "- Cosa sta chiedendo esattamente l'utente?\n" \
-        "- Quali strumenti disponibili sono rilevanti?\n" \
-        "- Qual è il numero MINIMO di task necessari?\n\n" \
-        "Genera l'output strutturato rispettando rigorosamente queste regole."
+        "You are the Project Lead of an advanced agentic system.\n"
+        "Your job is to break down the user's request into the MINIMUM number of sub-tasks\n"
+        "strictly necessary to answer it, without adding accessory or peripheral steps.\n"
+        "You have to create the plane based on the user request and Past Conversation.\n\n "
+        
+        "STRICT RULES:\n"
+        "1. MINIMALISM: plan only the indispensable actions. If a single web search or "
+        "   a single DB query is enough, the plan has ONE task.\n"
+        "2. Do not add verification tasks, extra detail-gathering, or checks "
+        "   unless explicitly requested by the user.\n"
+        "3. Each task must be atomic and independent: if two actions can be "
+        "   merged into a single query/search, merge them.\n"
+        
+        "AVAILABLE CAPABILITIES (in priority order — internal sources come first):\n"
+        "- Knowledge base (RAG): search internal documents, PDFs, and ingested files for content (e.g. policies, manuals, "
+        "  reports, books). This is the DEFAULT for any informational/'what does X say' request, including ones "
+        "  about a specific book, document, or person, even if you're not sure the document has been ingested.\n"
+        "- Database: company tables, structured data, SQL queries (e.g. orders, customers, price lists).\n"
+        "- Web search: use it ONLY when the user explicitly asks to search online/on the internet, or the request is "
+        "  clearly about real-time/public information that cannot live in an internal document or DB (news, "
+        "  current prices, live scores). Do NOT default to web search for document/knowledge questions just because "
+        "  it feels safer — try the knowledge base first.\n"
+
+        "IMPORTANT ABOUT OUTPUT FORMAT:\n"
+        "Each entry in 'sotto_task' MUST be a natural-language instruction describing WHAT to do, written as "
+        "a complete sentence with the actual subject/keywords from the user's request. NEVER output the name "
+        "of an agent or tool (e.g. 'db_agent', 'rag_agent', 'web_search_agent') as a task — those are internal "
+        "routing labels, not valid task text, and will break execution.\n\n"
+        "EXAMPLES (user request -> correct sotto_task list):\n\n"
+        "- 'Mostrami le tabelle del database' -> [\"Elenca tutte le tabelle presenti nel database\"]\n"
+        "- 'Qual è il prezzo del rame oggi?' -> [\"Cerca sul web il prezzo attuale del rame\"]\n"
+        "- 'Controlla l'indice del documento X' -> [\"Cerca nella knowledge base l'indice del documento X\"]  "
+        "(checking a document's table of contents, not a DB index)\n"
+        "- 'Cerca nella knowledge base la policy di reso' -> [\"Cerca nella knowledge base la policy di reso\"]\n"
+
+        "CoT RULES:\n"
+        "Before generating the plan, reason step by step out loud:\n"\
+        "- What exactly is the user asking for?\n" \
+        "- Which available tools are relevant?\n" \
+        "- What is the MINIMUM number of tasks needed?\n\n" \
+        "Generate the structured output strictly following these rules."
     )),
     ("user", (
-        "Richiesta dell'utente:\n\n{original_text}"
+        "User request:\n{original_text}\n"
+        "Past Conversation:\n{past_conversation}\n"
     ))
 ])
 
 _replanner_prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei il Gestore degli Errori di un sistema agentico avanzato (Re-Planner).\n"
-        "Vieni chiamato SOLO quando un task ha generato un errore. Il tuo unico compito è "
-        "produrre il piano correttivo MINIMO per riprendersi dal problema.\n\n"
-        "REGOLE TASSATIVE:\n"
-        "1. MINIMALISMO: inserisci nel 'new_plan' SOLO il task correttivo che risolve l'errore, "
-        "   più gli eventuali task originali che non sono ancora stati eseguiti e sono ancora necessari. "
-        "   Non aggiungere task di verifica o controllo aggiuntivi.\n"
-        "2. Scrivi ogni task come una frase semplice e diretta. NON usare prefissi come 'Task:', "
-        "   'Step:', numeri o qualsiasi altro prefisso. Esempio corretto: 'Clicca su Rifiuta tutto'.\n"
-        "3. Quelli già completati con successo non vanno mai ripetuti.\n"
-        "4. Non arrenderti mai: quasi sempre esiste una strategia alternativa. "
-        "   Imposta 'stop' a False e fornisci un 'new_plan' correttivo.\n"
-        "5. Imposta 'stop' a True ESCLUSIVAMENTE se l'errore è strutturalmente insuperabile "
-        "   (es. permessi mancanti, risorsa inesistente e non creabile) e non esiste alcuna alternativa.\n"
-        "Genera l'output strutturato rispettando rigorosamente queste regole."
+        "You are the Error Handler of an advanced agentic system (Re-Planner).\n"
+        "You are called ONLY when a task has produced an error. Your only job is to "
+        "produce the MINIMUM corrective plan to recover from the problem.\n\n"
+        "STRICT RULES:\n"
+        "1. MINIMALISM: put in 'new_plan' ONLY the corrective task that fixes the error, "
+        "   plus any original tasks that haven't been executed yet and are still needed. "
+        "   Do not add extra verification or check tasks.\n"
+        "2. Write each task as a simple, direct sentence. Do NOT use prefixes like 'Task:', "
+        "   'Step:', numbers, or any other prefix. Correct example: 'Click Reject all'.\n"
+        "3. Tasks already completed successfully must never be repeated.\n"
+        "4. Never give up: an alternative strategy almost always exists. "
+        "   Set 'stop' to False and provide a corrective 'new_plan'.\n"
+        "5. Set 'stop' to True ONLY if the error is structurally insurmountable "
+        "   (e.g. missing permissions, a resource that doesn't exist and can't be created) and no alternative exists.\n"
+        "Generate the structured output strictly following these rules."
     )),
     ("user", (
-        "RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
-        "DIARIO DI BORDO (Task eseguiti e relativi risultati, incluso l'errore):\n"
+        "ORIGINAL USER REQUEST: {original_text}\n\n"
+        "LOG (Executed tasks and their results, including the error):\n"
         "{past_steps_context}"
     ))
 ])

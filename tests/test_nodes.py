@@ -1,6 +1,6 @@
 from unittest.mock import MagicMock, patch
 from tests.test_utils import TestUtils
-from nodes.qa import clean_state_node, domanda_node, critique_node
+from nodes.qa import clean_node, domanda_node, critique_node
 from langchain_core.messages import AIMessage
 
 
@@ -10,9 +10,8 @@ class TestNodes:
         self.utils = TestUtils()
 
     
-    @patch("nodes.qa.search_all")
     @patch("nodes.qa.qa_chain")
-    def test_domanda_node_response_test_answer(self, mock_qa_chain, mock_search_all):
+    def test_domanda_node_response_test_answer(self, mock_qa_chain):
         
         """
             This test check the domanda_node function
@@ -24,7 +23,6 @@ class TestNodes:
         )
 
         mock_qa_chain.invoke.return_value = MagicMock(needs_tools=False, answer="test answer")
-        mock_search_all.return_value = MagicMock(return_value="")
         
         result = domanda_node(mock_state)
         
@@ -32,9 +30,8 @@ class TestNodes:
         assert "threshold" in result, "Expected 'threshold' key in the result."
         assert result.get("threshold") == 1, "Expected threshold to be incremented by 1."
     
-    @patch("nodes.qa.search_all")
     @patch("nodes.qa.qa_chain")
-    def test_domanda_node_response_tools_needed(self, mock_qa_chain, mock_search_all):
+    def test_domanda_node_response_tools_needed(self, mock_qa_chain):
         
         """
             This test check the domanda_node function when the response needs tools
@@ -45,7 +42,6 @@ class TestNodes:
             threshold=0
         )
         mock_qa_chain.invoke.return_value = MagicMock(needs_tools=True, answer="")
-        mock_search_all.return_value = MagicMock(return_value="")
 
         result = domanda_node(state)
         assert "messages" in result, "Expected 'messages' key in the result."
@@ -96,16 +92,14 @@ class TestNodes:
         assert result.get("critique_approvata") is True, "Expected critique to be not approved."
         assert result.get("critique_punti") == [], "Expected critique_punti to be an empty list."
 
-    @patch("nodes.qa.save_conversation")    
-    def test_clean_state_node(self, mock_save_conversation):
+    def test_clean_state_node(self):
 
         state = self.utils._make_state(
             messages=[AIMessage(content="test response")],
             session_id="test_session"
         )
-        mock_save_conversation.return_value = MagicMock(return_value=None)
 
-        result = clean_state_node(state)
+        result = clean_node(state)
         assert result.get("threshold") == 0, "Expected threshold to be reset to 0."
         assert result.get("critique_approvata") is False, "Expected critique_approvata to be reset to False."
         assert result.get("critique_punti") == [], "Expected critique_punti to be reset to an empty list."

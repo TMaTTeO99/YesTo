@@ -71,6 +71,7 @@ def transcribe() -> str:
 
 
 if __name__ == "__main__":
+    
     init_rag()
 
     with PostgresSaver.from_conn_string(get_db_address()) as memory:
@@ -89,6 +90,7 @@ if __name__ == "__main__":
                     print("[ERRORE] Comando /ingest richiede un percorso di file. Esempio: /ingest /path/to/file.pdf")
                 else:
                     _handle_ingest(raw.strip()[len("/ingest "):])
+                continue
 
             if raw.strip() == "/voice":
                 prompt = transcribe()

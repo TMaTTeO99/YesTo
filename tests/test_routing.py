@@ -19,7 +19,7 @@ class TestRouting:
             threshold=0
         )
         result = reflection_routing(state)
-        assert result == "clean_and_exit", "Expected to route to 'clean_and_exit' when critique is approved."
+        assert result == "clean", "Expected to route to 'clean' when critique is approved."
     
     def test_reflaction_routing_threshold_exceeded_5(self):
         """
@@ -30,7 +30,7 @@ class TestRouting:
             threshold=5
         )
         result = reflection_routing(state)
-        assert result == "clean_and_exit", "Expected to route to 'clean_and_exit' when threshold is exceeded."
+        assert result == "clean", "Expected to route to 'clean' when threshold is exceeded."
     
     def test_reflaction_routing_threshold_not_exceeded_4(self):
         """
@@ -52,7 +52,8 @@ class TestRouting:
             threshold=6
         )
         result = reflection_routing(state)
-        assert result == "clean_and_exit", "Expected to route to 'clean_and_exit' when threshold is greater than the maximum allowed value."
+        print(f"DEBUG: reflection_routing returned '{result}' for state with threshold={state['threshold']}")
+        assert result == "clean", "Expected to route to 'clean' when threshold is greater than the maximum allowed value."
 
     def test_reflaction_routing_threshold_impossible_negative_value(self):
         """"

@@ -121,28 +121,6 @@ def ingest_pdf(pdf_path: str) -> int:
     _store_docs.add_documents(chunks, ids=ids)
     return len(chunks)
 
-
 def search_documents(query: str, k: int = 3) -> list[Document]:
     _ensure_initialized()
     return _store_docs.similarity_search(query, k=k)
-
-
-def search_all(query: str, session_id: Optional[str] = None, k: int = 3) -> str:
-    """Cerca sia in memoria conversazionale che in documenti esterni, ritorna contesto formattato."""
-    _ensure_initialized()
-    memory_results = search_memory(query, session_id=session_id, k=k)
-    doc_results = search_documents(query, k=k)
-
-    parts = []
-    if memory_results:
-        parts.append("### Memoria conversazioni precedenti:")
-        for doc in memory_results:
-            parts.append(doc.page_content)
-
-    if doc_results:
-        parts.append("### Documenti di riferimento:")
-        for doc in doc_results:
-            src = doc.metadata.get("source", "sconosciuto")
-            parts.append(f"[{src}] {doc.page_content}")
-
-    return "\n\n".join(parts) if parts else ""

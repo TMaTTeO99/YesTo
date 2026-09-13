@@ -3,11 +3,12 @@ from state import AgentState
 from chains.compact_text_chain import compact_chain
 from chains.planner_chain import replanner_chain
 from config import debug_print
+from config import MAX_CHAT_HISTORY
 
 def _build_chat_history(state: AgentState) -> list[BaseMessage]:
 
     all_messages = state.get("messages", [])
-    if len(all_messages) > 6:
+    if len(all_messages) > MAX_CHAT_HISTORY:
 
         conversation_text = "\n".join(f"{m.type} : {m.content}" for m in all_messages)
         result = compact_chain.invoke({

@@ -10,6 +10,7 @@ load_dotenv()
 
 DEBUG = os.getenv("DEBUG", "False").lower() == "true"
 TEST_FINE_TUNING = os.getenv("TEST_FINE_TUNING", "False").lower() == "true"
+MAX_CHAT_HISTORY = 20
 
 def debug_print(*args, **kwargs):
     if DEBUG:
@@ -37,7 +38,7 @@ class _AgentResources:
         debug_print("🧠 [SINGLETON] Inizializzazione della risorsa LLM...")
 
         # it can be substituted with any other LLM.
-        self._llm = ChatOllama(model="llama31-agent-finetuned") if TEST_FINE_TUNING else ChatOllama(model="llama3.1")
+        self._llm = self._llm = ChatOllama(model="llama31-agent-finetuned-v2") if TEST_FINE_TUNING else ChatOllama(model="llama3.1")
         
         # model to record and transcribe audio.
         self._whisper_model = whisper.load_model("base")

@@ -1,14 +1,35 @@
-from chains.executor_chain import web_executor_chain, db_tools_map, web_tools_map, observation_chain, db_executor_chain
+from chains.executor_chain import (
+    web_executor_chain,
+    db_tools_map, 
+    web_tools_map, 
+    observation_chain, 
+    db_executor_chain,
+    rag_executor_chain,
+    rag_tools_map
+
+)
+
+
+from chains.tools_supervisor import supervisor_chain
 from config import debug_print
 from nodes.planning import _normalize_tool_result
 from state import PlanningState, ToolsState
-from chains.tools_supervisor import supervisor_chain
 from config import debug_print
 
 def supervisor_node(state: PlanningState):
 
-    debug_print(f"🛠️ [SUPERVISOR] Nodo SUPERVISOR - Stato corrente: {state}")    
-    supervisor_result = supervisor_chain.invoke({"original_text": state.get("original_text"), "plan": state.get("plan")})
+    debug_print(f"🛠️ [SUPERVISOR] Nodo SUPERVISOR - Stato corrente: {state}")
+    past_steps = state.get("past_steps", [])
+    past_steps_context = "\n".join(
+        f"- Tool used: {s.get('tool_name')} | success: {s.get('success', True)} | result: {s.get('receipt')}"
+        for s in past_steps
+    ) or "No tool has been called yet for this request."
+    
+    supervisor_result = supervisor_chain.invoke({
+        "original_text": state.get("original_text"),
+        "plan": state.get("plan"),
+        "past_steps_context": past_steps_context,
+    })
     
     return {
         "plan" : state.get("plan", []),
@@ -25,6 +46,10 @@ def exec_db_node(state: ToolsState):
     debug_print(f"🛠️ [TOOLS AGENT] Nodo EXEC DB - Stato corrente: {state}")
     return tool_executor(state, db_executor_chain, db_tools_map)
 
+def exec_rag_node(state: ToolsState):
+    debug_print(f"🛠️ [TOOLS AGENT] Nodo EXEC RAG - Stato corrente: {state}")
+    return tool_executor(state, rag_executor_chain, rag_tools_map)
+
 def exec_web_search_node(state: ToolsState):
     debug_print(f"🛠️ [TOOLS AGENT] Nodo EXEC WEB SEARCH - Stato corrente: {state}")
     return tool_executor(state, web_executor_chain, web_tools_map)
@@ -39,9 +64,13 @@ def tool_executor(state: ToolsState, chain, tools_map = None):
     debug_print(f"🎯 [PLANNING] Nodo EXECUTION - Task attuale: '{task}'")
 
     past_steps = state.get("past_steps", [])
-    context = "".join(f"- Task: {s['task']} -> Risultato: {s['details']}\n" for s in past_steps) or "Nessun task eseguito in precedenza."
+    context = "".join(f"- Task: {s['task']} -> Result: {s['details']}\n" for s in past_steps) or "Not task executed before."
 
-    result = chain.invoke({"current_task": task, "past_steps_context": context})
+    result = chain.invoke({
+        "current_task": task,
+        "past_steps_context": context,
+        "original_text": state.get("original_text", ""),
+    })
 
     new_steps = list(past_steps)
 
@@ -66,13 +95,13 @@ def tool_executor(state: ToolsState, chain, tools_map = None):
                 new_steps.append({"task": task, **normalized, "summary": obs.content})
             else:
                 err = f"[ERROR]: tool '{name}' non riconosciuto."
-                new_steps.append({"task": task, "tool_name": name, "receipt": err, "summary": err, "details": err})
+                new_steps.append({"task": task, "tool_name": name, "success": False, "receipt": err, "summary": err, "details": err})
     else:
 
 
         text = result.content if hasattr(result, "content") else str(result)
         debug_print(f"[LOG EXECUTOR] Nessuna tool call. Risposta diretta: {text}")
-        new_steps.append({"task": task, "tool_name": "no_tool", "receipt": text, "summary": text, "details": text})
+        new_steps.append({"task": task, "tool_name": "no_tool", "success": True, "receipt": text, "summary": text, "details": text})
     
     debug_print("   [LOG EXECUTOR] Task completato.")
     return {"plan": current_plan, "past_steps": new_steps}

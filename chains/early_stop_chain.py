@@ -5,44 +5,44 @@ from config import llm
 
 class EarlyStopSchema(BaseModel):
     obiettivo_raggiunto: bool = Field(
-        description="TRUE se l'obiettivo finale dell'utente è già stato pienamente raggiunto "
-                    "con i task già eseguiti, rendendo inutile proseguire con i task rimanenti. "
-                    "FALSE se i task rimanenti sono ancora necessari per completare l'obiettivo."
+        description="TRUE if the user's final goal has already been fully achieved "
+                    "with the tasks already executed, making it pointless to continue with the remaining tasks. "
+                    "FALSE if the remaining tasks are still needed to complete the goal."
     )
     motivazione: str = Field(
-        description="Breve spiegazione del perché l'obiettivo è già raggiunto o perché è necessario continuare."
+        description="Brief explanation of why the goal is already achieved or why it's necessary to continue."
     )
 
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei l'Ottimizzatore di un sistema agentico avanzato.\n"
-        "Vieni chiamato dopo ogni task eseguito con successo per decidere se la RICHIESTA ORIGINALE "
-        "dell'utente ha già ricevuto una risposta sufficiente, rendendo inutile proseguire.\n\n"
-        "REGOLA FONDAMENTALE: ignora il piano. Il piano è una stima iniziale che può essere "
-        "sovrastimata. Concentrati SOLO su: la domanda dell'utente ha già una risposta concreta "
-        "e soddisfacente nei risultati ottenuti finora?\n\n"
-        "ESEMPI:\n"
-        "- Utente chiede 'quanto costa X?' → se nei risultati c'è già un prezzo → obiettivo_raggiunto=True\n"
-        "- Utente chiede 'crea la tabella Y' → se la tabella non è ancora stata creata → False\n"
-        "- Utente chiede 'cerca notizie su X' → se i risultati web contengono notizie su X → True\n\n"
-        "REGOLE:\n"
-        "1. Imposta obiettivo_raggiunto=True se la risposta alla domanda originale è già presente "
-        "   nei risultati, anche parzialmente. Non serve raccogliere ogni dettaglio possibile.\n"
-        "2. Imposta obiettivo_raggiunto=False SOLO se manca ancora l'informazione o l'azione "
-        "   centrale richiesta dall'utente (non dettagli accessori).\n"
-        "3. I task rimanenti nel piano NON sono un motivo sufficiente per continuare: il piano "
-        "   può essere sovrastimato rispetto alla reale necessità dell'utente.\n"
-        "4. ECCEZIONE CRITICA: se nei risultati è visibile un popup, dialog o schermata bloccante "
-        "   (es. cookie consent, login wall, GDPR) che impedisce l'accesso al contenuto reale, "
-        "   imposta obiettivo_raggiunto=False anche se la pagina è stata caricata. "
-        "   Il contenuto non è accessibile finché il blocco non viene rimosso.\n"
-        "Genera l'output strutturato rispettando rigorosamente queste regole."
+        "You are the Optimizer of an advanced agentic system.\n"
+        "You are called after every successfully executed task to decide whether the user's ORIGINAL REQUEST "
+        "has already received a sufficient answer, making it pointless to continue.\n\n"
+        "CORE RULE: ignore the plan. The plan is an initial estimate that may be "
+        "overestimated. Focus ONLY on: does the user's question already have a concrete "
+        "and satisfying answer in the results obtained so far?\n\n"
+        "EXAMPLES:\n"
+        "- User asks 'how much does X cost?' → if the results already contain a price → obiettivo_raggiunto=True\n"
+        "- User asks 'create table Y' → if the table hasn't been created yet → False\n"
+        "- User asks 'search for news about X' → if the web results contain news about X → True\n\n"
+        "RULES:\n"
+        "1. Set obiettivo_raggiunto=True if the answer to the original question is already present "
+        "   in the results, even partially. You don't need to gather every possible detail.\n"
+        "2. Set obiettivo_raggiunto=False ONLY if the central information or action "
+        "   requested by the user is still missing (not accessory details).\n"
+        "3. Remaining tasks in the plan are NOT sufficient reason to continue: the plan "
+        "   may be overestimated relative to the user's actual need.\n"
+        "4. CRITICAL EXCEPTION: if the results show a blocking popup, dialog, or screen "
+        "   (e.g. cookie consent, login wall, GDPR) that prevents access to the real content, "
+        "   set obiettivo_raggiunto=False even if the page loaded. "
+        "   The content is not accessible until the block is removed.\n"
+        "Generate the structured output strictly following these rules."
     )),
     ("user", (
-        "RICHIESTA ORIGINALE UTENTE: {original_text}\n\n"
-        "RISULTATI OTTENUTI FINORA:\n{past_steps_context}\n\n"
-        "TASK RIMANENTI NEL PIANO (potrebbero essere superflui):\n{remaining_tasks}"
+        "ORIGINAL USER REQUEST: {original_text}\n\n"
+        "RESULTS OBTAINED SO FAR:\n{past_steps_context}\n\n"
+        "REMAINING TASKS IN THE PLAN (may be unnecessary):\n{remaining_tasks}"
     ))
 ])
 

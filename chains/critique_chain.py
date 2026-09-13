@@ -6,30 +6,36 @@ from config import llm
 
 class CritiqueSchema(BaseModel):
     approvato: bool = Field(
-        description="TRUE se la risposta è corretta e risolve il quesito. FALSE se contiene errori o allucinazioni."
+        description="TRUE if the answer is correct and resolves the question. FALSE if it contains errors or hallucinations."
     )
     punti_da_correggere: List[str] = Field(
-        description="Se approvato è TRUE, questa lista DEVE essere tassativamente vuota []. "
-                    "Se approvato è FALSE, inserisci qui l'elenco dei punti deboli riscontrati."
+        description="If approvato is TRUE, this list MUST be strictly empty []. "
+                    "If approvato is FALSE, list the weak points found here."
     )
 
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei l'Ispettore Controllo Qualità del sistema (Critico).\n"
-        "Il tuo unico compito è validare se la risposta dell'agente è corretta e non inventata.\n\n"
-        "REGOLE DI VALUTAZIONE:\n"
-        "1. Messaggi di cortesia, saluti o chiacchiere -> approvato=True sempre.\n"
-        "2. Risposte di conoscenza generale statica (capitali, definizioni, storia...) -> "
-        "   approvato=True se la risposta è corretta, False se contiene errori fattuali.\n"
-        "3. ATTENZIONE ALLE ALLUCINAZIONI SUL DATABASE: se la richiesta riguarda dati aziendali, "
-        "   tabelle, ordini, clienti, listini o qualsiasi dato operativo, e l'agente fornisce "
-        "   dati specifici SENZA che questi provengano da uno strumento reale (tool), "
-        "   quella è un'allucinazione -> approvato=False, segnalalo in punti_da_correggere.\n"
-        "4. REGOLA DI COERENZA: se approvato=False devi sempre fornire almeno un punto in "
-        "   punti_da_correggere. Se non riesci a trovare errori concreti, imposta approvato=True.\n"
+        "You are the system's Quality Control Inspector (Critic).\n"
+        "Your only job is to validate whether the agent's answer is correct and not fabricated.\n\n"
+        "EVALUATION RULES:\n"
+        "1. Courtesy messages, greetings, or small talk -> approvato=True always.\n"
+        "2. Static general-knowledge answers (capitals, definitions, history...) -> "
+        "   approvato=True if the answer is correct, False if it contains factual errors.\n"
+        "3. WATCH FOR HALLUCINATIONS: if the request concerns company data, tables, operational data, OR the "
+        "   specific content of a document/book/file (chapters, indexes, lists of items it supposedly contains), "
+        "   and the agent's answer states specific facts WITHOUT them coming from a real tool call/search result "
+        "   visible in the conversation, that is a hallucination -> approvato=False. In punti_da_correggere, say "
+        "   explicitly that the agent must use its tools (DB / web / knowledge-base search) to get real data "
+        "   instead of inventing an answer — do NOT just ask for 'a better answer' with the same content style, "
+        "   since that only encourages fabricating a plausible-looking but ungrounded answer.\n"
+        "4. If the agent's answer honestly says it found no information (e.g. after a real tool search failed), "
+        "   that is NOT a defect by itself — do not penalize an honest 'not found' unless the user explicitly asked "
+        "   the agent to try again with a tool it hasn't used yet.\n"
+        "5. CONSISTENCY RULE: if approvato=False you must always provide at least one point in "
+        "   punti_da_correggere. If you cannot find any concrete errors, set approvato=True.\n"
     )),
-    ("user", "Richiesta utente: {original_text}\n\nRisposta agente: {risposta}")
+    ("user", "User request: {original_text}\n\nAgent answer: {risposta}")
 ])
 
 critique_chain = _prompt | llm.with_structured_output(CritiqueSchema)

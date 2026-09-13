@@ -7,6 +7,7 @@ from chains.tools_output_chain import tools_output_chain
 from chains.critique_plan_result import critique_plan_result_chain
 from config import debug_print
 from nodes.node_utils import _call_replanner_node
+from chains.planner_checker_chain import planner_checker_chain
 import json
 
 MAX_PAST_STEP_BUFFER = 4
@@ -48,6 +49,7 @@ def _normalize_tool_result(tool_name: str, raw) -> dict:
         if isinstance(data, dict):
             return {
                 "tool_name": tool_name,
+                "success": bool(data.get("success", True)),
                 "receipt": str(data.get("receipt", "")),
                 "summary": str(data.get("summary", "")),
                 "details": str(data.get("details", "")),
@@ -55,7 +57,7 @@ def _normalize_tool_result(tool_name: str, raw) -> dict:
     except Exception:
         pass
     text = str(raw)
-    return {"tool_name": tool_name, "receipt": text, "summary": text, "details": text}
+    return {"tool_name": tool_name, "success": True, "receipt": text, "summary": text, "details": text}
 
 
 # ---------------------------------------------------------------------------
@@ -63,8 +65,9 @@ def _normalize_tool_result(tool_name: str, raw) -> dict:
 # ---------------------------------------------------------------------------
 
 def planning_init_node(state: PlanningState):
+
     debug_print("📋 [PLANNING] Nodo INIT - Generazione del piano di lavoro...")
-    result = planner_chain.invoke({"original_text": state["original_text"]})
+    result = planner_chain.invoke({"original_text": state["original_text"], "past_conversation" : state["past_conversation"]})
     debug_print(f"   [LOG PLANNER] Task pianificati: {result.sotto_task}")
     debug_print(f"   [LOG PLANNER] Raggionamento: {result.ragionamento}")
     return {"plan": result.sotto_task, "past_steps": [], "response": ""}
@@ -80,10 +83,11 @@ def replanner_node(state: PlanningState):
     if not past_steps:
         return {}
 
-    last_receipt = str(past_steps[-1]["receipt"])
-    debug_print(f"   [LOG RE-PLANNER] Ultimo risultato: {str(past_steps[-1]['details'])}")
+    last_step = past_steps[-1]
+    last_failed = not last_step.get("success", True)
+    debug_print(f"   [LOG RE-PLANNER] Ultimo risultato: {str(last_step['details'])}")
 
-    if "[ERROR]" not in last_receipt and current_plan:
+    if not last_failed and current_plan:
         debug_print(f"   [LOG RE-PLANNER] Tutto procede bene. Task rimanenti: {len(current_plan)}")
         context = _build_steps_context(past_steps, state.get("old_steps_summary"))
         remaining = "\n".join(f"- {t}" for t in current_plan)
@@ -102,24 +106,38 @@ def replanner_node(state: PlanningState):
         return {"old_steps_summary" : context}
 
 
-    if "[ERROR]" not in last_receipt and not current_plan:
+    if not last_failed and not current_plan:
 
         context = _build_steps_context(past_steps, state.get("old_steps_summary"))
         result_critique = critique_plan_result_chain.invoke({ "original_text" : state.get("original_text"), "past_steps_context" : context})
-        
+
         if result_critique.approvato:
             debug_print("   🛑 [GUARDRAIL] Obiettivo raggiunto e piano esaurito. Uscita forzata.")
             return {"plan": []}
         else:
             debug_print("   ⚠️ [LOG RE-PLANNER] Errore rilevato. Interpello LLM per ri-pianificare...")
             return _call_replanner_node(state, context)
-            
-    if "[ERROR]" in last_receipt:
+
+    if last_failed:
 
         debug_print("   ⚠️ [LOG RE-PLANNER] Errore rilevato. Interpello LLM per ri-pianificare...")
         context = _build_steps_context(past_steps, state.get("old_steps_summary"))
-        
+
         return _call_replanner_node(state, context)
+
+def planner_checker(state: PlanningState):
+
+    debug_print(f"[PLANNING CHECKER]: Check the plan produced by planner")
+    resutl_plan_checker = planner_checker_chain.invoke({"original_text" : state["original_text"], "plan" : state["plan"]})
+
+    if resutl_plan_checker.result:
+        return {"past_plan" : "good_plan"}
+    
+    return {"past_plan" : "bad_plan"}
+
+def planner_checker_result_router(state: PlanningState):
+    
+    return state["past_plan"]
 
 def merge_tools_output_node(state: PlanningState):
     debug_print("🎯 [PLANNING] Nodo MERGE - Confezionamento risposta finale...")

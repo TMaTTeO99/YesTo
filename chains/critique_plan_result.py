@@ -5,21 +5,21 @@ from config import llm
 
 class CritiqueSchema(BaseModel):
     approvato: bool = Field(
-        description="True se i dati prodotti dall'agente forniscono realmente le informazioni richieste dall'utente. False altrimenti."
+        description="True if the data produced by the agent genuinely provides the information requested by the user. False otherwise."
     )
 
 _prompt = ChatPromptTemplate.from_messages([
     ("system", (
-        "Sei un esperto analista di di testo. Il tuo compito è valutare se i dati prodotti dall'agente forniscono realmente le informazioni richieste dall'utente.\n"
-        "Se i dati prodotti dall'agente sono sufficienti e rispondono alla richiesta dell'utente, imposta approvato=True. Se i dati prodotti dall'agente sono insufficienti o non rispondono alla richiesta dell'utente, imposta approvato=False.\n"
-        "REGOLE:\n"
-        "- I dati devono essere completi e accurati.\n"
-        "- I dati devono essere rilevanti per la richiesta dell'utente.\n"
+        "You are an expert text analyst. Your job is to evaluate whether the data produced by the agent genuinely provides the information the user requested.\n"
+        "If the data produced by the agent is sufficient and answers the user's request, set approvato=True. If the data produced by the agent is insufficient or does not answer the user's request, set approvato=False.\n"
+        "RULES:\n"
+        "- The data must be complete and accurate.\n"
+        "- The data must be relevant to the user's request.\n"
     )),
     ("user", (
-        "Richiesta utente: {original_text}\n\n"
-        "Dati prodotti dall'agente: {past_steps_context}\n\n"
-        "Valuta se i dati prodotti dall'agente rispondono realmente alla richiesta dell'utente e imposta il campo 'approvato' di conseguenza."
+        "User request: {original_text}\n\n"
+        "Data produced by the agent: {past_steps_context}\n\n"
+        "Evaluate whether the data produced by the agent genuinely answers the user's request and set the 'approvato' field accordingly."
     ))
 ])
 

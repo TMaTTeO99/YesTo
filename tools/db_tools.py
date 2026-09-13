@@ -1,21 +1,41 @@
 import json
+import re
 from typing import List, Dict, Any
 from langchain_core.tools import tool
 from sqlalchemy import inspect, text
 from config import get_engine, debug_print
+from tools.utils import _make_tool_response
+
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_ALLOWED_CONSTRAINTS = {
+    "", "PRIMARY KEY", "NOT NULL", "UNIQUE", "PRIMARY KEY NOT NULL", "NOT NULL UNIQUE",
+}
+_ALLOWED_TYPES = {
+    "INTEGER", "BIGINT", "SMALLINT", "SERIAL", "BIGSERIAL", "TEXT", "VARCHAR", "CHAR",
+    "BOOLEAN", "DATE", "TIMESTAMP", "TIMESTAMPTZ", "NUMERIC", "REAL", "DOUBLE PRECISION",
+    "UUID", "JSON", "JSONB",
+}
 
 
-def _make_tool_response(success: bool, receipt: str, summary: str, details: str) -> str:
-    return json.dumps(
-        {"success": success, "receipt": receipt, "summary": summary, "details": details},
-        ensure_ascii=False,
-    )
+def _validate_identifier(value: str) -> bool:
+    return bool(_IDENTIFIER_RE.match(value or ""))
 
+
+def _validate_type(col_type: str) -> bool:
+    base = re.match(r"^[A-Za-z ]+", col_type or "")
+    if not base:
+        return False
+    normalized = base.group(0).strip().upper()
+    if normalized not in _ALLOWED_TYPES:
+        return False
+    # allow a trailing size spec like VARCHAR(255)
+    remainder = (col_type or "")[base.end():]
+    return remainder == "" or bool(re.match(r"^\(\d+(,\d+)?\)$", remainder))
 
 @tool
 def elenco_tabelle_db() -> str:
-    """Usa questo strumento per ottenere l'elenco di tutte le tabelle presenti nel database.
-    QUESTO STRUMENTO NON ACCETTA ALCUN PARAMETRO DI INPUT (lasciare gli argomenti vuoti {})."""
+    """Use this tool to get the list of all tables present in the database.
+    THIS TOOL DOES NOT ACCEPT ANY INPUT PARAMETER (leave the arguments empty {})."""
     debug_print("🔌 [TOOL DB] elenco_tabelle_db()")
 
     try:
@@ -36,16 +56,20 @@ def elenco_tabelle_db() -> str:
 
 @tool
 def create_table(table_name: str, columns: List[Dict[str, Any]]) -> str:
-    """Usa questo strumento per creare una nuova tabella nel database.
+    """Use this tool to create a new table in the database.
 
-    PARAMETRI:
-    - table_name: Il nome della tabella (es. 'utenti').
-    - columns: Lista di dizionari con chiavi 'name', 'type', e opzionalmente 'constraint'.
-      Esempio: [{"name": "id", "type": "INTEGER", "constraint": "PRIMARY KEY"}]
+    PARAMETERS:
+    - table_name: The name of the table (e.g. 'utenti').
+    - columns: List of dictionaries with keys 'name', 'type', and optionally 'constraint'.
+      Example: [{"name": "id", "type": "INTEGER", "constraint": "PRIMARY KEY"}]
     """
     debug_print(f"🔌 [TOOL DB] create_table(table_name={table_name})")
 
     try:
+        if not _validate_identifier(table_name):
+            msg = f"Nome tabella non valido: '{table_name}'. Sono ammessi solo lettere, numeri e underscore."
+            return _make_tool_response(False, msg, msg, msg)
+
         if not isinstance(columns, list) or not columns:
             msg = "Il parametro 'columns' deve essere una lista valida e non vuota."
             return _make_tool_response(False, msg, msg, msg)
@@ -56,10 +80,20 @@ def create_table(table_name: str, columns: List[Dict[str, Any]]) -> str:
                 msg = "Ogni elemento di 'columns' deve essere un dizionario."
                 return _make_tool_response(False, msg, msg, msg)
             name, col_type = col.get("name"), col.get("type")
+            constraint = col.get("constraint", "") or ""
             if not name or not col_type:
                 msg = "Ogni colonna deve avere i campi 'name' e 'type'."
                 return _make_tool_response(False, msg, msg, msg)
-            col_defs.append(f"{name} {col_type} {col.get('constraint', '')}".strip())
+            if not _validate_identifier(name):
+                msg = f"Nome colonna non valido: '{name}'. Sono ammessi solo lettere, numeri e underscore."
+                return _make_tool_response(False, msg, msg, msg)
+            if not _validate_type(col_type):
+                msg = f"Tipo colonna non ammesso: '{col_type}'."
+                return _make_tool_response(False, msg, msg, msg)
+            if constraint.strip().upper() not in _ALLOWED_CONSTRAINTS:
+                msg = f"Vincolo non ammesso: '{constraint}'."
+                return _make_tool_response(False, msg, msg, msg)
+            col_defs.append(f"{name} {col_type} {constraint}".strip())
 
         query = f"CREATE TABLE {table_name} ({', '.join(col_defs)});"
         debug_print(f"   [LOG DB] Query: {query}")
@@ -78,7 +112,7 @@ def create_table(table_name: str, columns: List[Dict[str, Any]]) -> str:
 
 @tool
 def find_table_info(table_name: str) -> str:
-    """Usa questo strumento per ottenere la struttura dettagliata di una tabella (colonne, tipi, vincoli)."""
+    """Use this tool to get the detailed structure of a table (columns, types, constraints)."""
     debug_print(f"🔌 [TOOL DB] find_table_info(table_name={table_name})")
 
     try:
